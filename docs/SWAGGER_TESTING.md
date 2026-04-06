@@ -18,7 +18,10 @@ cd Memora_Server
 
 > 👉 **http://localhost:8080/swagger-ui/index.html**
 
-`local` 프로파일은 H2 인메모리 DB 라서 PostgreSQL 없이도 즉시 동작합니다.
+`local` 프로파일은 PostgreSQL + `ddl-auto: update` 로 동작합니다. 사전에 PostgreSQL
+이 기동되어 있어야 하며, `.env` 에 `DB_URL` / `DB_USERNAME` / `DB_PASSWORD` 를 지정해
+두세요. (교직자 기능은 `courses.invite_code`, `notices`, `instructor_feedbacks` 등
+신규 스키마를 자동 생성합니다.)
 
 ---
 
@@ -26,7 +29,7 @@ cd Memora_Server
 
 ```
 ┌──────────────────────────────────────────────────┐
-│  Memora API           v1.0.0    [Authorize 🔓]  │ ← 우측 상단 자물쇠
+│  Memora API           v1.1.0    [Authorize 🔓]  │ ← 우측 상단 자물쇠
 │  Memora AI Learning Copilot 백엔드                │
 ├──────────────────────────────────────────────────┤
 │  Servers: ▼ http://localhost:8080 (Local)        │
@@ -37,12 +40,14 @@ cd Memora_Server
 │     POST /api/auth/refresh  토큰 재발급             │
 │     GET  /api/auth/me       내 정보                │
 │                                                  │
-│  ▶ Course                                        │
+│  ▶ Course      (+ 초대 코드 발급/수강)              │
 │  ▶ Lecture                                       │
 │  ▶ Document                                      │
 │  ▶ QA                                            │
-│  ▶ Quiz                                          │
-│  ▶ Analysis                                      │
+│  ▶ Quiz        (+ 교직자 수동 CRUD)                │
+│  ▶ Analysis    (+ 교직자 대시보드 / 드릴다운)       │
+│  ▶ Notice      (강의 공지사항)                     │
+│  ▶ Feedback    (교직자 → 학생 피드백)              │
 └──────────────────────────────────────────────────┘
 ```
 
@@ -118,9 +123,10 @@ cd Memora_Server
 
 ---
 
-## 3. 풀 시나리오 - "강의 → 자료 → QA → 퀴즈"
+## 3. 풀 시나리오 - "강의 → 자료 → QA → 퀴즈 → 분석"
 
-INSTRUCTOR 토큰으로 진행.
+INSTRUCTOR 토큰으로 Step 1~5 진행, Step 6 부터는 학생/교직자를 번갈아 사용.
+(교직자 전용 확장 시나리오는 바로 아래 **3-1** 절 참고)
 
 ### Step 1. 강의 생성
 
@@ -190,12 +196,99 @@ POST /api/quizzes/{quizId}/submit
 → isCorrect / feedback 확인
 ```
 
-### Step 6. 학습 분석
+### Step 6. 학습 분석 (학생 본인)
 
 ```text
 GET /api/analysis/me
-→ weakConcepts / weeklyProgress / 진단 / 추천
+→ weakConcepts / weeklyProgress / competencies / maxGrowthMetric
 ```
+
+---
+
+## 3-1. 교직자 전용 시나리오 (v1.1.0 신규)
+
+### A. 강의 초대 코드 기반 수강 등록
+
+1. **INSTRUCTOR** 토큰으로 `POST /api/courses` 강의 생성
+   - 응답 `data.inviteCode` 에 8자리 코드 (예: `A7KQ3M2P`) 가 내려옴
+   - ⚠️ `inviteCode` 필드는 **소유 강사에게만** 노출 (학생 응답에서는 필드 자체가 제외)
+2. 필요 시 `POST /api/courses/{courseId}/invite-code/regenerate` 로 재발급
+3. **STUDENT** 로 로그인 → Authorize 갱신
+4. `POST /api/courses/enroll-by-code`
+   ```json
+   { "inviteCode": "A7KQ3M2P" }
+   ```
+5. `GET /api/courses` 에서 본인 수강 목록에 잡히는지 확인
+
+> 💡 기존 `POST /api/courses/{id}/enroll` 도 하위 호환으로 유지됩니다.
+
+### B. 퀴즈 수동 CRUD (교직자)
+
+```text
+POST /api/lectures/{lectureId}/quizzes          ← 수동 생성
+{
+  "question": "CPU 스케줄링 알고리즘이 아닌 것은?",
+  "quizType": "MULTIPLE_CHOICE",
+  "options": ["FCFS", "SJF", "RR", "LRU"],
+  "correctAnswer": "4",
+  "explanation": "LRU는 페이지 교체 알고리즘입니다.",
+  "difficulty": "MEDIUM",
+  "conceptTag": "스케줄링"
+}
+
+PUT    /api/quizzes/{quizId}    ← 문항 수정
+DELETE /api/quizzes/{quizId}    ← 풀이 기록 없을 때만 삭제 가능
+```
+
+> ⚠️ 학생이 이미 풀이한 문항은 `DELETE` 시 409 `QUIZ_HAS_ATTEMPTS` 가 떨어지고, 대신 `PUT` 으로 수정해야 합니다.
+
+### C. 강의 분석 대시보드
+
+INSTRUCTOR 토큰으로 (소유 강의만 조회 가능)
+
+```text
+GET /api/analysis/courses/{courseId}/overview
+→ totalStudents / activeStudents / averageScore / averageCorrectRate
+  / topWeakConcepts / competencies / weeklyProgress / studentDistribution
+
+GET /api/analysis/courses/{courseId}/students
+→ 수강생 목록 + status (EXCELLENT / GOOD / AVERAGE / NEEDS_HELP)
+
+GET /api/analysis/courses/{courseId}/students/{userId}
+→ 특정 학생 드릴다운 분석 (강의 범위로 제한)
+```
+
+- `status` 기준: 85↑ EXCELLENT / 70~84 GOOD / 50~69 AVERAGE / 나머지·최근 7일 미접속 NEEDS_HELP
+- 남의 강의를 조회하면 `403 FORBIDDEN`
+
+### D. 공지사항 (Notice)
+
+```text
+POST /api/courses/{courseId}/notices        ← 교직자 작성
+{
+  "title": "중간고사 일정 안내",
+  "content": "중간고사는 4월 20일 오후 2시에 진행됩니다.",
+  "pinned": true
+}
+
+GET    /api/courses/{courseId}/notices      ← 수강생/소유 강사 조회 (pinned 우선 정렬)
+PUT    /api/notices/{noticeId}              ← 작성자 본인만
+DELETE /api/notices/{noticeId}              ← 작성자 본인만
+```
+
+### E. 교직자 피드백 (1:1)
+
+```text
+POST /api/courses/{courseId}/students/{studentId}/feedback  ← 교직자 작성
+{ "content": "최근 퀴즈 성적이 많이 올랐어요. 계속 이 페이스로 가세요!" }
+
+GET   /api/courses/{courseId}/students/{studentId}/feedback ← 교직자 조회
+GET   /api/feedback/me                                      ← 학생이 받은 피드백
+PATCH /api/feedback/{feedbackId}/read                       ← 학생 읽음 처리
+```
+
+- `POST` 는 "강의 소유 강사" + "해당 학생이 그 강의 수강 중" 이 모두 참이어야 성공
+- 학생은 본인이 수신자인 피드백만 `markAsRead` 가능
 
 ---
 
@@ -218,8 +311,11 @@ GET /api/analysis/me
 | 증상 | 원인 / 해결 |
 |---|---|
 | **401 Unauthorized** | Authorize 안 했거나 토큰 만료(1h). 로그인 다시 → Authorize 다시 |
-| **403 Forbidden** | 권한 부족 (예: 학생 계정으로 강의 생성 시도). INSTRUCTOR 로 로그인 |
+| **403 Forbidden** | 권한 부족 (학생이 교직자 API 호출 / 남의 강의 조회). 역할/소유 강의 확인 |
 | **400 Bad Request** | 요청 body 검증 실패. 응답 본문에 어떤 필드가 문제인지 표시됨 |
+| **404 INVALID_INVITE_CODE** | 초대 코드 오타 / 존재하지 않음. 교직자에게 재발급 요청 |
+| **409 QUIZ_HAS_ATTEMPTS** | 이미 학생 풀이 기록이 있는 퀴즈는 삭제 불가. `PUT` 으로 수정만 가능 |
+| **404 NOTICE_NOT_FOUND / FEEDBACK_NOT_FOUND** | ID 오타 또는 이미 삭제된 리소스 |
 | **500 + AI_SERVER_ERROR** | AI 서버 미기동. `uvicorn main:app --port 8000` 띄우기 |
 | **Document 업로드 시 S3 에러** | `.env` 의 AWS 키 미설정. S3 미사용이면 업로드 스킵 |
 | **CORS 에러는 안 남** | Swagger UI 가 같은 호스트라 CORS 무관 |
@@ -252,15 +348,22 @@ FastAPI Swagger 에서 할 수 있는 것:
 
 ## 7. 시연 직전 체크리스트
 
+- [ ] PostgreSQL 기동 + `.env` 의 DB 환경변수 확인
 - [ ] `./gradlew bootRun --args='--spring.profiles.active=local'` 또는 `--prod` 로 백엔드 기동
+- [ ] 기동 로그에서 `courses.invite_code`, `notices`, `instructor_feedbacks` 테이블/컬럼 자동 반영 확인
 - [ ] (필요시) `uvicorn main:app --port 8000` 으로 AI 서버 기동
 - [ ] http://localhost:8080/swagger-ui/index.html 접속
 - [ ] INSTRUCTOR 회원가입
-- [ ] STUDENT 회원가입 (선택)
-- [ ] 로그인 → accessToken 복사
-- [ ] 우측 상단 Authorize 🔓 → 토큰 등록
-- [ ] `GET /api/auth/me` 200 확인
-- [ ] 강의/차시/자료/QA/Quiz/Analysis 시연 흐름 1회 리허설
+- [ ] STUDENT 회원가입
+- [ ] INSTRUCTOR 로그인 → accessToken 복사 → Authorize 등록
+- [ ] `POST /api/courses` 로 강의 생성 → 응답 `inviteCode` 기록
+- [ ] `POST /api/lectures/{id}/quizzes/generate` 로 퀴즈 생성
+- [ ] STUDENT 로 Authorize 전환 → `POST /api/courses/enroll-by-code` 로 수강
+- [ ] 학생이 퀴즈 여러 개 풀이 → `GET /api/analysis/me` 로 본인 분석
+- [ ] INSTRUCTOR 로 Authorize 전환 → `GET /api/analysis/courses/{id}/overview` 로 학급 대시보드
+- [ ] `GET .../students` + 드릴다운 `GET .../students/{userId}` 확인
+- [ ] `POST /api/courses/{id}/notices` 로 공지 작성 → 학생 쪽에서 목록 확인
+- [ ] `POST /api/courses/{id}/students/{studentId}/feedback` → 학생 `/api/feedback/me` 에서 확인
 
 ---
 
