@@ -1,12 +1,15 @@
 package com.kit.memora_server.infra.ai;
 
+import com.kit.memora_server.global.exception.BusinessException;
+import com.kit.memora_server.global.exception.ErrorCode;
 import com.kit.memora_server.infra.ai.dto.AiDocumentProcessRequest;
+import com.kit.memora_server.infra.ai.dto.AiQaRequest;
+import com.kit.memora_server.infra.ai.dto.AiQaResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
-
-import java.util.Map;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 @Slf4j
 @Component
@@ -25,42 +28,20 @@ public class AiServerClient {
                 .subscribe();
     }
 
-    public Map<String, Object> askQuestion(Map<String, Object> request) {
-        return aiWebClient.post()
-                .uri("/ai/qa/ask")
-                .bodyValue(request)
-                .retrieve()
-                .bodyToMono(Map.class)
-                .map(m -> (Map<String, Object>) m)
-                .block();
-    }
-
-    public Object generateQuiz(Map<String, Object> request) {
-        return aiWebClient.post()
-                .uri("/ai/quiz/generate")
-                .bodyValue(request)
-                .retrieve()
-                .bodyToMono(Object.class)
-                .block();
-    }
-
-    public Map<String, Object> gradeQuiz(Map<String, Object> request) {
-        return aiWebClient.post()
-                .uri("/ai/quiz/grade")
-                .bodyValue(request)
-                .retrieve()
-                .bodyToMono(Map.class)
-                .map(m -> (Map<String, Object>) m)
-                .block();
-    }
-
-    public Map<String, Object> analyzeLearning(Map<String, Object> request) {
-        return aiWebClient.post()
-                .uri("/ai/analysis/learning")
-                .bodyValue(request)
-                .retrieve()
-                .bodyToMono(Map.class)
-                .map(m -> (Map<String, Object>) m)
-                .block();
+    public AiQaResponse askQuestion(AiQaRequest request) {
+        try {
+            return aiWebClient.post()
+                    .uri("/ai/qa/ask")
+                    .bodyValue(request)
+                    .retrieve()
+                    .bodyToMono(AiQaResponse.class)
+                    .block();
+        } catch (WebClientResponseException e) {
+            log.error("AI 서버 QA 요청 실패: status={}, body={}", e.getStatusCode(), e.getResponseBodyAsString());
+            throw new BusinessException(ErrorCode.AI_SERVER_ERROR);
+        } catch (Exception e) {
+            log.error("AI 서버 QA 요청 실패: {}", e.getMessage());
+            throw new BusinessException(ErrorCode.AI_SERVER_ERROR);
+        }
     }
 }
