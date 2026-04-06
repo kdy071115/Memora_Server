@@ -14,13 +14,25 @@ AI 기반 학습 코파일럿 **Memora** 의 백엔드 (Spring Boot).
 
 ## 로컬 실행
 
-### 1) Spring Boot 단독 실행
+### 1) Spring Boot 단독 실행 (H2 인메모리, Docker 불필요)
+
+```bash
+./gradlew bootRun --args='--spring.profiles.active=local'
+```
+
+- API: http://localhost:8080
+- Swagger UI: http://localhost:8080/swagger-ui/index.html
+- H2 콘솔: http://localhost:8080/h2-console
+  - JDBC URL: `jdbc:h2:mem:memora;MODE=PostgreSQL;DB_CLOSE_DELAY=-1`
+  - User: `sa`, Password: (빈 값)
+
+### 1-2) PostgreSQL 로컬 실행
+
+별도로 Postgres를 띄운 뒤 (`brew services start postgresql` 등):
 
 ```bash
 ./gradlew bootRun
 ```
-
-`http://localhost:8080/swagger-ui/index.html` 에서 API 문서 확인.
 
 ### 2) 통합 실행 (Docker Compose)
 
