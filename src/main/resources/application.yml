@@ -46,5 +46,12 @@ springdoc:
     path: /swagger-ui.html
     tags-sorter: alpha
     operations-sorter: alpha
+    display-request-duration: true
+    doc-expansion: none
+    persist-authorization: true
   api-docs:
     path: /v3/api-docs
+  default-produces-media-type: application/json
+  default-consumes-media-type: application/json
+  paths-to-match: /api/**
+  packages-to-scan: com.kit.memora_server.domain
