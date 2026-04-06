@@ -1,0 +1,50 @@
+spring:
+  application:
+    name: Memora-Server
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/memora
+    username: ${DB_USERNAME:memora}
+    password: ${DB_PASSWORD:memora}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+    open-in-view: false
+
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
+
+jwt:
+  secret: ${JWT_SECRET:memora-default-secret-key-for-development-only-change-in-production}
+  access-expiration: 3600000
+  refresh-expiration: 604800000
+
+ai:
+  server:
+    url: ${AI_SERVER_URL:http://localhost:8000}
+
+cloud:
+  aws:
+    s3:
+      bucket: ${AWS_S3_BUCKET:memora-uploads}
+    region:
+      static: ${AWS_REGION:ap-northeast-2}
+    credentials:
+      access-key: ${AWS_ACCESS_KEY:}
+      secret-key: ${AWS_SECRET_KEY:}
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+  api-docs:
+    path: /v3/api-docs
