@@ -1,0 +1,13 @@
+package com.kit.memora_server.domain.quiz.repository;
+
+import com.kit.memora_server.domain.quiz.entity.Quiz;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.List;
+
+public interface QuizRepository extends JpaRepository<Quiz, Long> {
+
+    List<Quiz> findByLectureId(Long lectureId);
+
+    List<Quiz> findByLectureIdAndDifficulty(Long lectureId, String difficulty);
+}
