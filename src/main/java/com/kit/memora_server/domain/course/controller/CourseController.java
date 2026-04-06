@@ -2,6 +2,7 @@ package com.kit.memora_server.domain.course.controller;
 
 import com.kit.memora_server.domain.course.dto.CourseRequest;
 import com.kit.memora_server.domain.course.dto.CourseResponse;
+import com.kit.memora_server.domain.course.dto.EnrollByCodeRequest;
 import com.kit.memora_server.domain.course.service.CourseService;
 import com.kit.memora_server.global.common.ApiResponse;
 import com.kit.memora_server.global.common.PageResponse;
@@ -83,5 +84,24 @@ public class CourseController {
             @AuthenticationPrincipal CustomUserDetails user) {
         courseService.enroll(courseId, user.getId());
         return ResponseEntity.ok(ApiResponse.ok("수강 등록되었습니다."));
+    }
+
+    @Operation(summary = "초대 코드로 수강 등록")
+    @PostMapping("/enroll-by-code")
+    public ResponseEntity<ApiResponse<CourseResponse>> enrollByCode(
+            @AuthenticationPrincipal CustomUserDetails user,
+            @Valid @RequestBody EnrollByCodeRequest request) {
+        CourseResponse response = courseService.enrollByCode(request.getInviteCode(), user.getId());
+        return ResponseEntity.ok(ApiResponse.ok("수강 등록되었습니다.", response));
+    }
+
+    @Operation(summary = "초대 코드 재발급")
+    @PostMapping("/{courseId}/invite-code/regenerate")
+    @PreAuthorize("hasRole('INSTRUCTOR')")
+    public ResponseEntity<ApiResponse<CourseResponse>> regenerateInviteCode(
+            @PathVariable Long courseId,
+            @AuthenticationPrincipal CustomUserDetails user) {
+        CourseResponse response = courseService.regenerateInviteCode(courseId, user.getId());
+        return ResponseEntity.ok(ApiResponse.ok("초대 코드가 재발급되었습니다.", response));
     }
 }

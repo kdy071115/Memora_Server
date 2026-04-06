@@ -17,15 +17,24 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.security.SecureRandom;
+
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class CourseService {
 
+    /** 초대 코드에 사용할 문자 (헷갈리는 I, O, 0, 1 제외). */
+    private static final char[] INVITE_CODE_ALPHABET =
+            "ABCDEFGHJKLMNPQRSTUVWXYZ23456789".toCharArray();
+    private static final int INVITE_CODE_LENGTH = 8;
+    private static final int INVITE_CODE_MAX_RETRY = 10;
+
     private final CourseRepository courseRepository;
     private final EnrollmentRepository enrollmentRepository;
     private final LectureRepository lectureRepository;
     private final UserRepository userRepository;
+    private final SecureRandom secureRandom = new SecureRandom();
 
     @Transactional
     public CourseResponse create(Long instructorId, CourseRequest request) {
@@ -36,10 +45,11 @@ public class CourseService {
                 .title(request.getTitle())
                 .description(request.getDescription())
                 .instructor(instructor)
+                .inviteCode(generateUniqueInviteCode())
                 .build();
 
         Course saved = courseRepository.save(course);
-        return CourseResponse.from(saved, 0, 0, false);
+        return CourseResponse.from(saved, 0, 0, false, true);
     }
 
     public Page<CourseResponse> getAll(Long userId, Pageable pageable) {
@@ -48,7 +58,8 @@ public class CourseService {
                     long students = enrollmentRepository.countByCourseId(course.getId());
                     long lectures = lectureRepository.countByCourseId(course.getId());
                     boolean enrolled = userId != null && enrollmentRepository.existsByUserIdAndCourseId(userId, course.getId());
-                    return CourseResponse.from(course, students, lectures, enrolled);
+                    boolean isOwner = userId != null && course.getInstructor().getId().equals(userId);
+                    return CourseResponse.from(course, students, lectures, enrolled, isOwner);
                 });
     }
 
@@ -59,7 +70,8 @@ public class CourseService {
         long students = enrollmentRepository.countByCourseId(courseId);
         long lectures = lectureRepository.countByCourseId(courseId);
         boolean enrolled = userId != null && enrollmentRepository.existsByUserIdAndCourseId(userId, courseId);
-        return CourseResponse.from(course, students, lectures, enrolled);
+        boolean isOwner = userId != null && course.getInstructor().getId().equals(userId);
+        return CourseResponse.from(course, students, lectures, enrolled, isOwner);
     }
 
     @Transactional
@@ -75,7 +87,7 @@ public class CourseService {
 
         long students = enrollmentRepository.countByCourseId(courseId);
         long lectures = lectureRepository.countByCourseId(courseId);
-        return CourseResponse.from(course, students, lectures, false);
+        return CourseResponse.from(course, students, lectures, false, true);
     }
 
     @Transactional
@@ -108,5 +120,61 @@ public class CourseService {
                 .user(user)
                 .course(course)
                 .build());
+    }
+
+    @Transactional
+    public CourseResponse enrollByCode(String inviteCode, Long userId) {
+        Course course = courseRepository.findByInviteCode(inviteCode)
+                .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_INVITE_CODE));
+
+        if (enrollmentRepository.existsByUserIdAndCourseId(userId, course.getId())) {
+            throw new BusinessException(ErrorCode.ALREADY_ENROLLED);
+        }
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+
+        enrollmentRepository.save(Enrollment.builder()
+                .user(user)
+                .course(course)
+                .build());
+
+        long students = enrollmentRepository.countByCourseId(course.getId());
+        long lectures = lectureRepository.countByCourseId(course.getId());
+        return CourseResponse.from(course, students, lectures, true, false);
+    }
+
+    @Transactional
+    public CourseResponse regenerateInviteCode(Long courseId, Long instructorId) {
+        Course course = courseRepository.findById(courseId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.COURSE_NOT_FOUND));
+
+        if (!course.getInstructor().getId().equals(instructorId)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
+
+        course.regenerateInviteCode(generateUniqueInviteCode());
+
+        long students = enrollmentRepository.countByCourseId(courseId);
+        long lectures = lectureRepository.countByCourseId(courseId);
+        return CourseResponse.from(course, students, lectures, false, true);
+    }
+
+    private String generateUniqueInviteCode() {
+        for (int i = 0; i < INVITE_CODE_MAX_RETRY; i++) {
+            String code = generateRandomInviteCode();
+            if (!courseRepository.existsByInviteCode(code)) {
+                return code;
+            }
+        }
+        throw new BusinessException(ErrorCode.INTERNAL_ERROR);
+    }
+
+    private String generateRandomInviteCode() {
+        StringBuilder sb = new StringBuilder(INVITE_CODE_LENGTH);
+        for (int i = 0; i < INVITE_CODE_LENGTH; i++) {
+            sb.append(INVITE_CODE_ALPHABET[secureRandom.nextInt(INVITE_CODE_ALPHABET.length)]);
+        }
+        return sb.toString();
     }
 }

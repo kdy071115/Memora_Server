@@ -30,8 +30,15 @@ public class Course extends BaseEntity {
     @Builder.Default
     private String status = "ACTIVE";
 
+    @Column(length = 10, unique = true)
+    private String inviteCode;
+
     public void update(String title, String description) {
         this.title = title;
         this.description = description;
+    }
+
+    public void regenerateInviteCode(String code) {
+        this.inviteCode = code;
     }
 }

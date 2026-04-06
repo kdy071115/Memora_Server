@@ -17,6 +17,8 @@ public interface QuizAttemptRepository extends JpaRepository<QuizAttempt, Long> 
 
     long countByUserIdAndIsCorrectTrue(Long userId);
 
+    boolean existsByQuizId(Long quizId);
+
     @Query("SELECT qa FROM QuizAttempt qa WHERE qa.user.id = :userId AND qa.quiz.lecture.course.id = :courseId")
     List<QuizAttempt> findByUserIdAndCourseId(@Param("userId") Long userId, @Param("courseId") Long courseId);
 }

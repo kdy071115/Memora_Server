@@ -45,4 +45,16 @@ public class Quiz {
 
     @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();
+
+    public void update(String question, String quizType, String options,
+                       String correctAnswer, String explanation,
+                       String difficulty, String conceptTag) {
+        if (question != null) this.question = question;
+        if (quizType != null) this.quizType = quizType;
+        this.options = options;
+        if (correctAnswer != null) this.correctAnswer = correctAnswer;
+        this.explanation = explanation;
+        if (difficulty != null) this.difficulty = difficulty;
+        this.conceptTag = conceptTag;
+    }
 }

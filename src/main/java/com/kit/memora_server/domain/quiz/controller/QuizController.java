@@ -1,10 +1,12 @@
 package com.kit.memora_server.domain.quiz.controller;
 
 import com.kit.memora_server.domain.quiz.dto.QuizAttemptResponse;
+import com.kit.memora_server.domain.quiz.dto.QuizCreateRequest;
 import com.kit.memora_server.domain.quiz.dto.QuizGenerateRequest;
 import com.kit.memora_server.domain.quiz.dto.QuizResponse;
 import com.kit.memora_server.domain.quiz.dto.QuizSubmitRequest;
 import com.kit.memora_server.domain.quiz.dto.QuizSubmitResponse;
+import com.kit.memora_server.domain.quiz.dto.QuizUpdateRequest;
 import com.kit.memora_server.domain.quiz.service.QuizService;
 import com.kit.memora_server.global.common.ApiResponse;
 import com.kit.memora_server.global.security.CustomUserDetails;
@@ -12,6 +14,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -33,6 +36,41 @@ public class QuizController {
             @PathVariable Long lectureId,
             @Valid @RequestBody QuizGenerateRequest request) {
         return ResponseEntity.ok(ApiResponse.ok(quizService.generate(lectureId, request)));
+    }
+
+    @Operation(summary = "문제 수동 생성 (교직자)")
+    @PostMapping("/api/lectures/{lectureId}/quizzes")
+    @PreAuthorize("hasRole('INSTRUCTOR')")
+    public ResponseEntity<ApiResponse<QuizResponse>> create(
+            @PathVariable Long lectureId,
+            @AuthenticationPrincipal CustomUserDetails user,
+            @Valid @RequestBody QuizCreateRequest request) {
+        QuizResponse response = quizService.create(lectureId, user.getId(), request);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.ok("문제가 생성되었습니다.", response));
+    }
+
+    @Operation(summary = "문제 수정 (교직자)")
+    @PutMapping("/api/quizzes/{quizId}")
+    @PreAuthorize("hasRole('INSTRUCTOR')")
+    public ResponseEntity<ApiResponse<QuizResponse>> update(
+            @PathVariable Long quizId,
+            @AuthenticationPrincipal CustomUserDetails user,
+            @Valid @RequestBody QuizUpdateRequest request) {
+        return ResponseEntity.ok(ApiResponse.ok(
+                "문제가 수정되었습니다.",
+                quizService.update(quizId, user.getId(), request)
+        ));
+    }
+
+    @Operation(summary = "문제 삭제 (교직자)")
+    @DeleteMapping("/api/quizzes/{quizId}")
+    @PreAuthorize("hasRole('INSTRUCTOR')")
+    public ResponseEntity<ApiResponse<Void>> delete(
+            @PathVariable Long quizId,
+            @AuthenticationPrincipal CustomUserDetails user) {
+        quizService.delete(quizId, user.getId());
+        return ResponseEntity.ok(ApiResponse.ok("문제가 삭제되었습니다."));
     }
 
     @Operation(summary = "문제 목록 조회")

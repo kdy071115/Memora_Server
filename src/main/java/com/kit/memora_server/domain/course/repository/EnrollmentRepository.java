@@ -1,6 +1,7 @@
 package com.kit.memora_server.domain.course.repository;
 
 import com.kit.memora_server.domain.course.entity.Enrollment;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
@@ -15,6 +16,9 @@ public interface EnrollmentRepository extends JpaRepository<Enrollment, Long> {
     List<Enrollment> findByUserId(Long userId);
 
     List<Enrollment> findByCourseId(Long courseId);
+
+    @EntityGraph(attributePaths = "user")
+    List<Enrollment> findWithUserByCourseId(Long courseId);
 
     long countByCourseId(Long courseId);
 }

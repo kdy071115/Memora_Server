@@ -1,7 +1,7 @@
 # Memora 프론트엔드 개발 가이드
 
 > 백엔드 팀 → 프론트엔드 팀 전달 문서
-> 최종 수정: 2026-04-06
+> 최종 수정: 2026-04-06 (교직자 기능 확장)
 
 이 문서는 프론트엔드 개발에 필요한 **모든 API 명세, 데이터 구조, 화면별 연동 가이드**를 포함합니다.
 백엔드 API가 완성된 후 이 문서를 기반으로 프론트 작업을 진행하세요.
@@ -406,6 +406,7 @@ GET /api/courses?page=0&size=20
         "lectureCount": 12,
         "status": "ACTIVE",
         "isEnrolled": true,
+        "inviteCode": "A7KQ3M2P",
         "createdAt": "2026-03-01T09:00:00"
       }
     ],
@@ -416,6 +417,8 @@ GET /api/courses?page=0&size=20
   }
 }
 ```
+
+> `inviteCode` 필드는 **소유 강사(INSTRUCTOR)에게만** 포함됩니다. 수강생/비소유 사용자 응답에서는 생략됩니다.
 
 ---
 
@@ -434,9 +437,22 @@ POST /api/courses
 ```json
 {
   "success": true,
-  "data": { "id": 1, "title": "인공지능 개론", "description": "...", "status": "ACTIVE" }
+  "data": {
+    "id": 1,
+    "title": "인공지능 개론",
+    "description": "AI 기초부터 응용까지",
+    "instructor": { "id": 5, "name": "이교수" },
+    "studentCount": 0,
+    "lectureCount": 0,
+    "status": "ACTIVE",
+    "isEnrolled": false,
+    "inviteCode": "A7KQ3M2P",
+    "createdAt": "2026-04-06T11:00:00"
+  }
 }
 ```
+
+> 강의 생성 시 8자리 초대 코드(A-Z + 2-9, 헷갈리는 I/O/0/1 제외)가 자동 발급됩니다.
 
 ---
 
@@ -456,28 +472,16 @@ GET /api/courses/{courseId}
     "description": "AI 기초부터 응용까지",
     "instructor": { "id": 5, "name": "이교수" },
     "studentCount": 35,
+    "lectureCount": 12,
     "status": "ACTIVE",
     "isEnrolled": true,
-    "lectures": [
-      {
-        "id": 1,
-        "title": "1강: AI란 무엇인가",
-        "orderIndex": 1,
-        "documentCount": 2,
-        "hasCompletedDocuments": true
-      },
-      {
-        "id": 2,
-        "title": "2강: 머신러닝 기초",
-        "orderIndex": 2,
-        "documentCount": 1,
-        "hasCompletedDocuments": false
-      }
-    ],
+    "inviteCode": "A7KQ3M2P",
     "createdAt": "2026-03-01T09:00:00"
   }
 }
 ```
+
+> 차시 목록은 `GET /api/courses/{courseId}/lectures` 를 별도 호출해 조회합니다.
 
 ---
 
@@ -490,6 +494,68 @@ POST /api/courses/{courseId}/enroll
 **Response (200):**
 ```json
 { "success": true, "message": "수강 등록되었습니다." }
+```
+
+---
+
+#### 초대 코드로 수강 등록
+```
+POST /api/courses/enroll-by-code
+인증: 필요 (STUDENT)
+```
+
+**Request:**
+```json
+{ "inviteCode": "A7KQ3M2P" }
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "수강 등록되었습니다.",
+  "data": {
+    "id": 1,
+    "title": "인공지능 개론",
+    "description": "AI 기초부터 응용까지",
+    "instructor": { "id": 5, "name": "이교수" },
+    "studentCount": 36,
+    "lectureCount": 12,
+    "status": "ACTIVE",
+    "isEnrolled": true,
+    "createdAt": "2026-03-01T09:00:00"
+  }
+}
+```
+
+- 잘못된 코드: `INVALID_INVITE_CODE` (404)
+- 이미 수강 중: `ALREADY_ENROLLED` (409)
+
+---
+
+#### 초대 코드 재발급 (교강사)
+```
+POST /api/courses/{courseId}/invite-code/regenerate
+인증: 필요 (INSTRUCTOR, 소유)
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "초대 코드가 재발급되었습니다.",
+  "data": {
+    "id": 1,
+    "title": "인공지능 개론",
+    "instructor": { "id": 5, "name": "이교수" },
+    "studentCount": 35,
+    "lectureCount": 12,
+    "status": "ACTIVE",
+    "isEnrolled": false,
+    "inviteCode": "B9XY5N7R",
+    "createdAt": "2026-03-01T09:00:00"
+  }
+}
 ```
 
 ---
@@ -846,6 +912,94 @@ GET /api/lectures/{lectureId}/quizzes/attempts
 
 ---
 
+#### 문제 수동 생성 (교강사)
+```
+POST /api/lectures/{lectureId}/quizzes
+인증: 필요 (INSTRUCTOR, 소유 강의)
+```
+
+**Request:**
+```json
+{
+  "question": "RAG에서 Retrieval 단계의 주요 목적은?",
+  "quizType": "MULTIPLE_CHOICE",
+  "options": [
+    "A. 모델을 학습시키기 위해",
+    "B. 관련 문서를 검색하기 위해",
+    "C. 응답을 생성하기 위해",
+    "D. 데이터를 전처리하기 위해"
+  ],
+  "correctAnswer": "B",
+  "explanation": "Retrieval은 관련 문서를 벡터 DB에서 검색합니다.",
+  "difficulty": "MEDIUM",
+  "conceptTag": "RAG"
+}
+```
+
+**Response (201):**
+```json
+{
+  "success": true,
+  "message": "문제가 생성되었습니다.",
+  "data": {
+    "id": 201,
+    "question": "RAG에서 Retrieval 단계의 주요 목적은?",
+    "quizType": "MULTIPLE_CHOICE",
+    "options": ["A. ...", "B. ...", "C. ...", "D. ..."],
+    "difficulty": "MEDIUM",
+    "conceptTag": "RAG"
+  }
+}
+```
+
+---
+
+#### 문제 수정 (교강사)
+```
+PUT /api/quizzes/{quizId}
+인증: 필요 (INSTRUCTOR, 소유 강의)
+```
+
+**Request:** (모든 필드 선택 — null 이면 기존 값 유지. `options`/`explanation`/`conceptTag`는 null 전달 시 제거됨)
+```json
+{
+  "question": "수정된 문제 본문",
+  "quizType": "MULTIPLE_CHOICE",
+  "options": ["A. ...", "B. ...", "C. ...", "D. ..."],
+  "correctAnswer": "C",
+  "explanation": "수정된 해설",
+  "difficulty": "HARD",
+  "conceptTag": "RAG"
+}
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "문제가 수정되었습니다.",
+  "data": { "id": 201, "question": "...", "quizType": "MULTIPLE_CHOICE", "options": [...], "difficulty": "HARD", "conceptTag": "RAG" }
+}
+```
+
+---
+
+#### 문제 삭제 (교강사)
+```
+DELETE /api/quizzes/{quizId}
+인증: 필요 (INSTRUCTOR, 소유 강의)
+```
+
+**Response (200):**
+```json
+{ "success": true, "message": "문제가 삭제되었습니다." }
+```
+
+- 학생 풀이 기록이 있는 문제는 삭제 불가: `QUIZ_HAS_ATTEMPTS` (409)
+- 이 경우 교강사는 `PUT /api/quizzes/{quizId}` 로 수정만 가능합니다.
+
+---
+
 ### 5-6. 학습 분석 API
 
 #### 내 종합 분석
@@ -913,46 +1067,10 @@ GET /api/analysis/me/courses/{courseId}
 
 ---
 
-#### 학생별 현황 (교강사)
-```
-GET /api/analysis/courses/{courseId}/students
-인증: 필요 (INSTRUCTOR)
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "students": [
-      {
-        "userId": 1,
-        "name": "김학생",
-        "averageScore": 78,
-        "completionRate": 0.67,
-        "lastActiveAt": "2026-04-06T14:30:00",
-        "status": "GOOD"
-      },
-      {
-        "userId": 2,
-        "name": "이학생",
-        "averageScore": 45,
-        "completionRate": 0.33,
-        "lastActiveAt": "2026-04-02T10:00:00",
-        "status": "NEEDS_HELP"
-      }
-    ]
-  }
-}
-```
-- `status`: `"EXCELLENT"` | `"GOOD"` | `"AVERAGE"` | `"NEEDS_HELP"`
-
----
-
-#### 강의 전체 분석 (교강사)
+#### 강의 분석 대시보드 (교강사)
 ```
 GET /api/analysis/courses/{courseId}/overview
-인증: 필요 (INSTRUCTOR)
+인증: 필요 (INSTRUCTOR, 소유 강의)
 ```
 
 **Response:**
@@ -961,16 +1079,30 @@ GET /api/analysis/courses/{courseId}/overview
   "success": true,
   "data": {
     "courseId": 1,
+    "courseTitle": "인공지능 개론",
     "totalStudents": 35,
+    "activeStudents": 28,
     "averageScore": 72,
-    "completionRate": 0.85,
+    "averageCorrectRate": 0.68,
+    "averageStudyTime": 3600,
+    "totalQuizAttempts": 420,
     "topWeakConcepts": [
-      { "concept": "벡터 임베딩", "avgCorrectRate": 0.45 },
-      { "concept": "트랜스포머", "avgCorrectRate": 0.52 }
+      { "concept": "벡터 임베딩", "correctRate": 0.45, "attemptCount": 82 },
+      { "concept": "트랜스포머", "correctRate": 0.52, "attemptCount": 61 }
     ],
-    "frequentQuestions": [
-      { "question": "임베딩 차원은 어떻게 정하나요?", "count": 12 },
-      { "question": "셀프 어텐션과 크로스 어텐션의 차이?", "count": 8 }
+    "competencies": {
+      "개념 이해력": 72,
+      "수학적 사고": 70,
+      "비판적 추론": 68,
+      "암기력": 74,
+      "응용력": 65,
+      "문제 해결": 69
+    },
+    "weeklyProgress": [
+      { "week": "2026-W11", "studyTime": 8200, "quizScore": 65 },
+      { "week": "2026-W12", "studyTime": 9400, "quizScore": 68 },
+      { "week": "2026-W13", "studyTime": 10200, "quizScore": 71 },
+      { "week": "2026-W14", "studyTime": 11500, "quizScore": 72 }
     ],
     "studentDistribution": {
       "excellent": 5,
@@ -981,6 +1113,293 @@ GET /api/analysis/courses/{courseId}/overview
   }
 }
 ```
+
+- `activeStudents`: 최근 7일 이내에 퀴즈 시도 또는 학습 로그가 있는 학생 수
+- `averageCorrectRate`: 전체 학급 정답률 (0.0 ~ 1.0)
+- `averageStudyTime`: 학생 1인당 평균 학습 시간(초)
+- `competencies`: 학급 평균 6개 역량 (0~150 스케일, 초기 구현은 학생별 평균)
+- `studentDistribution`: `overallScore` + 활동 여부 기반 분류
+  - `excellent` ≥ 85, `good` 70~84, `average` 50~69, `needsHelp` < 50 또는 최근 7일 미접속
+
+---
+
+#### 강의 수강생 목록 (교강사)
+```
+GET /api/analysis/courses/{courseId}/students
+인증: 필요 (INSTRUCTOR, 소유 강의)
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "userId": 1,
+      "name": "김학생",
+      "email": "student1@kit.ac.kr",
+      "averageScore": 78,
+      "correctRate": 0.72,
+      "totalQuizAttempts": 25,
+      "totalStudyTime": 4200,
+      "lastActiveAt": "2026-04-06T14:30:00",
+      "status": "GOOD"
+    },
+    {
+      "userId": 2,
+      "name": "이학생",
+      "email": "student2@kit.ac.kr",
+      "averageScore": 45,
+      "correctRate": 0.41,
+      "totalQuizAttempts": 12,
+      "totalStudyTime": 900,
+      "lastActiveAt": "2026-03-28T10:00:00",
+      "status": "NEEDS_HELP"
+    }
+  ]
+}
+```
+
+- `status`: `"EXCELLENT"` | `"GOOD"` | `"AVERAGE"` | `"NEEDS_HELP"`
+- `lastActiveAt`: 마지막 학습 로그 또는 퀴즈 시도 시각 중 더 최근 값 (없으면 null)
+
+---
+
+#### 수강생 개별 드릴다운 (교강사)
+```
+GET /api/analysis/courses/{courseId}/students/{userId}
+인증: 필요 (INSTRUCTOR, 소유 강의)
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "userId": 1,
+    "userName": "김학생",
+    "userEmail": "student1@kit.ac.kr",
+    "courseId": 1,
+    "courseTitle": "인공지능 개론",
+    "overallScore": 78,
+    "totalStudyTime": 4200,
+    "totalQuizAttempts": 25,
+    "overallCorrectRate": 0.72,
+    "lastActiveAt": "2026-04-06T14:30:00",
+    "status": "GOOD",
+    "weakConcepts": [
+      { "concept": "벡터 임베딩", "correctRate": 0.4, "attemptCount": 5 }
+    ],
+    "weeklyProgress": [
+      { "week": "2026-W13", "studyTime": 900, "quizScore": 60 },
+      { "week": "2026-W14", "studyTime": 1200, "quizScore": 72 }
+    ],
+    "competencies": {
+      "개념 이해력": 78,
+      "수학적 사고": 78,
+      "비판적 추론": 78,
+      "암기력": 78,
+      "응용력": 78,
+      "문제 해결": 78
+    }
+  }
+}
+```
+
+- 이 엔드포인트는 지정된 강의 범위 내의 시도/학습 로그만 집계합니다.
+- 학생이 수강 등록되지 않은 경우 `NOT_ENROLLED` (403) 반환.
+
+---
+
+### 5-7. 공지사항 API
+
+#### 공지사항 작성 (교강사)
+```
+POST /api/courses/{courseId}/notices
+인증: 필요 (INSTRUCTOR, 소유 강의)
+```
+
+**Request:**
+```json
+{
+  "title": "중간고사 일정 안내",
+  "content": "중간고사는 4월 20일 오후 2시에 진행됩니다.",
+  "pinned": true
+}
+```
+
+**Response (201):**
+```json
+{
+  "success": true,
+  "message": "공지사항이 작성되었습니다.",
+  "data": {
+    "id": 10,
+    "courseId": 1,
+    "title": "중간고사 일정 안내",
+    "content": "중간고사는 4월 20일 오후 2시에 진행됩니다.",
+    "pinned": true,
+    "authorId": 5,
+    "authorName": "이교수",
+    "createdAt": "2026-04-06T11:00:00",
+    "updatedAt": "2026-04-06T11:00:00"
+  }
+}
+```
+
+---
+
+#### 공지사항 목록
+```
+GET /api/courses/{courseId}/notices
+인증: 필요 (수강생 또는 소유 강사)
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 10,
+      "courseId": 1,
+      "title": "중간고사 일정 안내",
+      "content": "중간고사는 4월 20일 오후 2시에 진행됩니다.",
+      "pinned": true,
+      "authorId": 5,
+      "authorName": "이교수",
+      "createdAt": "2026-04-06T11:00:00",
+      "updatedAt": "2026-04-06T11:00:00"
+    }
+  ]
+}
+```
+
+> `pinned=true` 공지가 먼저 정렬되고, 그 안에서 최신순으로 내려옵니다.
+> 수강 등록되지 않은 학생이 호출하면 `NOT_ENROLLED` (403).
+
+---
+
+#### 공지사항 수정 (교강사)
+```
+PUT /api/notices/{noticeId}
+인증: 필요 (작성자 INSTRUCTOR)
+```
+
+**Request:** 생성과 동일한 스키마
+**Response:** 생성과 동일한 스키마
+
+---
+
+#### 공지사항 삭제 (교강사)
+```
+DELETE /api/notices/{noticeId}
+인증: 필요 (작성자 INSTRUCTOR)
+```
+
+**Response (200):**
+```json
+{ "success": true, "message": "공지사항이 삭제되었습니다." }
+```
+
+---
+
+### 5-8. 교직자 피드백 API
+
+#### 피드백 작성 (교강사)
+```
+POST /api/courses/{courseId}/students/{studentId}/feedback
+인증: 필요 (INSTRUCTOR, 소유 강의)
+```
+
+**Request:**
+```json
+{ "content": "최근 퀴즈 성적이 많이 올랐어요. 계속 이 페이스로 가세요!" }
+```
+
+**Response (201):**
+```json
+{
+  "success": true,
+  "message": "피드백이 작성되었습니다.",
+  "data": {
+    "id": 7,
+    "courseId": 1,
+    "courseTitle": "인공지능 개론",
+    "instructorId": 5,
+    "instructorName": "이교수",
+    "studentId": 1,
+    "studentName": "김학생",
+    "content": "최근 퀴즈 성적이 많이 올랐어요. 계속 이 페이스로 가세요!",
+    "readByStudent": false,
+    "createdAt": "2026-04-06T11:30:00"
+  }
+}
+```
+
+- 지정한 학생이 해당 강의에 수강 등록되지 않았으면 `NOT_ENROLLED` (403)
+
+---
+
+#### 학생별 피드백 조회 (교강사)
+```
+GET /api/courses/{courseId}/students/{studentId}/feedback
+인증: 필요 (INSTRUCTOR, 소유 강의)
+```
+
+**Response:** `FeedbackResponse` 배열 (최신순)
+
+---
+
+#### 내가 받은 피드백 (학생)
+```
+GET /api/feedback/me
+인증: 필요 (STUDENT)
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 7,
+      "courseId": 1,
+      "courseTitle": "인공지능 개론",
+      "instructorId": 5,
+      "instructorName": "이교수",
+      "studentId": 1,
+      "studentName": "김학생",
+      "content": "최근 퀴즈 성적이 많이 올랐어요.",
+      "readByStudent": false,
+      "createdAt": "2026-04-06T11:30:00"
+    }
+  ]
+}
+```
+
+---
+
+#### 피드백 읽음 처리 (학생)
+```
+PATCH /api/feedback/{feedbackId}/read
+인증: 필요 (수신자 본인)
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "읽음 처리되었습니다.",
+  "data": {
+    "id": 7,
+    "readByStudent": true,
+    "createdAt": "2026-04-06T11:30:00"
+  }
+}
+```
+
+- 본인이 수신자가 아니면 `FORBIDDEN` (403)
 
 ---
 
@@ -1072,6 +1491,42 @@ GET /api/analysis/courses/{courseId}/overview
 
 ---
 
+### 6-8. 교직자 강의 관리
+
+| 항목 | 내용 |
+|------|------|
+| 경로 | `/courses/{id}/manage` (권장) — 소유 강사 전용 |
+| 역할 | `user.role === 'INSTRUCTOR' && course.instructor.id === user.id` 일 때만 노출 |
+
+**탭 구성**
+
+1. **대시보드**
+   - API: `GET /api/analysis/courses/{courseId}/overview`
+   - 표시: 평균 점수·정답률·학습 시간 카드, 역량 레이더(6축), 주간 진도 라인, 학생 분포 파이, 취약 개념 TOP5
+2. **수강생 관리**
+   - 목록 API: `GET /api/analysis/courses/{courseId}/students`
+   - 학생 클릭 → 드릴다운 모달/페이지: `GET /api/analysis/courses/{courseId}/students/{userId}`
+   - status 뱃지로 필터 가능 (EXCELLENT/GOOD/AVERAGE/NEEDS_HELP)
+3. **초대 코드**
+   - 강의 상세/대시보드에 `inviteCode` 표시 + 복사 버튼
+   - 재발급: `POST /api/courses/{courseId}/invite-code/regenerate`
+4. **퀴즈 검수**
+   - 생성: `POST /api/lectures/{lectureId}/quizzes` (자동 생성 `/generate` 와 구분)
+   - 수정: `PUT /api/quizzes/{quizId}`
+   - 삭제: `DELETE /api/quizzes/{quizId}` — `QUIZ_HAS_ATTEMPTS` (409) 발생 시 "학생 풀이 기록이 있어 삭제할 수 없습니다. 수정만 가능합니다." 안내
+5. **공지사항**
+   - 목록/작성/수정/삭제: `/api/courses/{courseId}/notices`, `/api/notices/{id}`
+   - `pinned` 토글 UI 제공
+6. **피드백**
+   - 학생 드릴다운 화면에서 바로 입력 폼 노출
+   - 작성: `POST /api/courses/{courseId}/students/{studentId}/feedback`
+   - 작성 이력: `GET /api/courses/{courseId}/students/{studentId}/feedback`
+
+> 학생 측: 대시보드에 "내가 받은 피드백" 카드(`GET /api/feedback/me`) + 읽지 않은 개수 뱃지(`readByStudent === false`).
+> 공지사항: 강의 상세 페이지 상단에 `pinned=true`를 먼저 보여주고, 학생은 `GET /api/courses/{courseId}/notices` 로 조회.
+
+---
+
 ## 7. 공통 타입 정의
 
 ```typescript
@@ -1098,8 +1553,12 @@ interface Course {
   lectureCount: number;
   status: 'ACTIVE' | 'ARCHIVED';
   isEnrolled: boolean;
+  /** 소유 강사에게만 제공 */
+  inviteCode?: string;
   createdAt: string;
 }
+
+interface EnrollByCodeRequest { inviteCode: string; }
 
 interface Lecture {
   id: number;
@@ -1173,6 +1632,26 @@ interface QuizGenerateRequest {
   difficulty: string;
 }
 
+interface QuizCreateRequest {
+  question: string;
+  quizType: 'MULTIPLE_CHOICE' | 'SHORT_ANSWER' | 'ESSAY';
+  options?: string[];
+  correctAnswer: string;
+  explanation?: string;
+  difficulty?: 'EASY' | 'MEDIUM' | 'HARD';
+  conceptTag?: string;
+}
+
+interface QuizUpdateRequest {
+  question?: string;
+  quizType?: string;
+  options?: string[];
+  correctAnswer?: string;
+  explanation?: string;
+  difficulty?: string;
+  conceptTag?: string;
+}
+
 interface QuizSubmitRequest { userAnswer: string; timeSpent: number; }
 
 interface QuizResult {
@@ -1198,16 +1677,84 @@ interface MyAnalysis {
 }
 
 interface WeakConcept { concept: string; correctRate: number; attemptCount: number; }
-interface WeeklyProgress { week: string; studyTime: number; quizScore: number; }
+interface WeeklyProgress { week: string; studyTime: number; quizScore: number | null; }
 
 interface CourseOverview {
+  courseId: number;
+  courseTitle: string;
   totalStudents: number;
+  activeStudents: number;
   averageScore: number;
-  completionRate: number;
-  topWeakConcepts: { concept: string; avgCorrectRate: number }[];
-  frequentQuestions: { question: string; count: number }[];
+  averageCorrectRate: number;
+  averageStudyTime: number;
+  totalQuizAttempts: number;
+  topWeakConcepts: WeakConcept[];
+  competencies: Record<string, number>;
+  weeklyProgress: WeeklyProgress[];
   studentDistribution: { excellent: number; good: number; average: number; needsHelp: number };
 }
+
+type StudentStatus = 'EXCELLENT' | 'GOOD' | 'AVERAGE' | 'NEEDS_HELP';
+
+interface CourseStudentSummary {
+  userId: number;
+  name: string;
+  email: string;
+  averageScore: number;
+  correctRate: number;
+  totalQuizAttempts: number;
+  totalStudyTime: number;
+  lastActiveAt: string | null;
+  status: StudentStatus;
+}
+
+interface CourseStudentDetail {
+  userId: number;
+  userName: string;
+  userEmail: string;
+  courseId: number;
+  courseTitle: string;
+  overallScore: number;
+  totalStudyTime: number;
+  totalQuizAttempts: number;
+  overallCorrectRate: number;
+  lastActiveAt: string | null;
+  status: StudentStatus;
+  weakConcepts: WeakConcept[];
+  weeklyProgress: WeeklyProgress[];
+  competencies: Record<string, number>;
+}
+
+// types/notice.ts
+interface Notice {
+  id: number;
+  courseId: number;
+  title: string;
+  content: string;
+  pinned: boolean;
+  authorId: number;
+  authorName: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface NoticeRequest { title: string; content: string; pinned?: boolean; }
+
+// types/feedback.ts
+interface InstructorFeedback {
+  id: number;
+  courseId: number;
+  courseTitle: string;
+  instructorId: number;
+  instructorName: string;
+  studentId: number;
+  studentName: string;
+  content: string;
+  readByStudent: boolean;
+  createdAt: string;
+}
+
+interface FeedbackRequest { content: string; }
 ```
 
 ---
@@ -1278,7 +1825,12 @@ interface AuthState {
 | `DOCUMENT_PROCESSING` | 문서 처리 중 (아직 사용 불가) |
 | `SESSION_NOT_FOUND` | QA 세션 없음 |
 | `QUIZ_NOT_FOUND` | 문제 없음 |
+| `NOTICE_NOT_FOUND` | 공지사항 없음 |
+| `FEEDBACK_NOT_FOUND` | 피드백 없음 |
 | `NOT_ENROLLED` | 수강 등록 안 됨 |
+| `ALREADY_ENROLLED` | 이미 수강 중 |
+| `INVALID_INVITE_CODE` | 초대 코드가 유효하지 않음 |
+| `QUIZ_HAS_ATTEMPTS` | 이미 학생 풀이 기록이 있어 문제 삭제 불가 (수정만 가능) |
 | `AI_SERVER_ERROR` | AI 서버 오류 |
 
 ---

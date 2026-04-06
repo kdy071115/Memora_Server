@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 public interface LearningLogRepository extends JpaRepository<LearningLog, Long> {
@@ -18,4 +19,13 @@ public interface LearningLogRepository extends JpaRepository<LearningLog, Long> 
 
     @Query("SELECT COALESCE(SUM(l.duration), 0) FROM LearningLog l WHERE l.user.id = :userId AND l.lecture.course.id = :courseId")
     long sumDurationByUserIdAndCourseId(@Param("userId") Long userId, @Param("courseId") Long courseId);
+
+    @Query("SELECT l FROM LearningLog l WHERE l.user.id = :userId AND l.lecture.course.id = :courseId ORDER BY l.createdAt DESC")
+    List<LearningLog> findByUserIdAndCourseIdOrderByCreatedAtDesc(@Param("userId") Long userId, @Param("courseId") Long courseId);
+
+    @Query("SELECT l FROM LearningLog l WHERE l.lecture.course.id = :courseId ORDER BY l.createdAt DESC")
+    List<LearningLog> findByCourseIdOrderByCreatedAtDesc(@Param("courseId") Long courseId);
+
+    @Query("SELECT COALESCE(MAX(l.createdAt), NULL) FROM LearningLog l WHERE l.user.id = :userId AND l.lecture.course.id = :courseId")
+    LocalDateTime findMaxCreatedAtByUserIdAndCourseId(@Param("userId") Long userId, @Param("courseId") Long courseId);
 }

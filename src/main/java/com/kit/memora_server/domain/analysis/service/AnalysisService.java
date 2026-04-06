@@ -1,12 +1,23 @@
 package com.kit.memora_server.domain.analysis.service;
 
+import com.kit.memora_server.domain.analysis.dto.CourseOverviewResponse;
+import com.kit.memora_server.domain.analysis.dto.CourseStudentDetailResponse;
+import com.kit.memora_server.domain.analysis.dto.CourseStudentSummary;
 import com.kit.memora_server.domain.analysis.dto.MyAnalysisResponse;
+import com.kit.memora_server.domain.analysis.dto.StudentDistributionDto;
 import com.kit.memora_server.domain.analysis.dto.WeakConceptDto;
 import com.kit.memora_server.domain.analysis.dto.WeeklyProgressDto;
+import com.kit.memora_server.domain.analysis.entity.LearningLog;
 import com.kit.memora_server.domain.analysis.repository.LearningLogRepository;
+import com.kit.memora_server.domain.course.entity.Course;
+import com.kit.memora_server.domain.course.entity.Enrollment;
+import com.kit.memora_server.domain.course.repository.CourseRepository;
 import com.kit.memora_server.domain.course.repository.EnrollmentRepository;
 import com.kit.memora_server.domain.quiz.entity.QuizAttempt;
 import com.kit.memora_server.domain.quiz.repository.QuizAttemptRepository;
+import com.kit.memora_server.domain.user.entity.User;
+import com.kit.memora_server.global.exception.BusinessException;
+import com.kit.memora_server.global.exception.ErrorCode;
 import com.kit.memora_server.infra.ai.AiServerClient;
 import com.kit.memora_server.infra.ai.dto.AiAnalysisRequest;
 import com.kit.memora_server.infra.ai.dto.AiAnalysisResponse;
@@ -33,6 +44,12 @@ public class AnalysisService {
     private static final int MIN_ATTEMPT_COUNT = 2;
     private static final int WEAK_CONCEPT_LIMIT = 5;
     private static final int RECENT_WEEKS = 4;
+    private static final int ACTIVE_DAYS = 7;
+
+    // 학생 분류 임계값 (학생별 overallScore 기준)
+    private static final int EXCELLENT_THRESHOLD = 85;
+    private static final int GOOD_THRESHOLD = 70;
+    private static final int AVERAGE_THRESHOLD = 50;
 
     /** 프론트 레이더 차트가 고정으로 기대하는 6개 역량 키 (순서 유지) */
     private static final List<String> COMPETENCY_KEYS = List.of(
@@ -42,6 +59,7 @@ public class AnalysisService {
     private final QuizAttemptRepository quizAttemptRepository;
     private final LearningLogRepository learningLogRepository;
     private final EnrollmentRepository enrollmentRepository;
+    private final CourseRepository courseRepository;
     private final AiServerClient aiServerClient;
 
     public MyAnalysisResponse getMyAnalysis(Long userId) {
@@ -89,6 +107,208 @@ public class AnalysisService {
                                 : "꾸준한 학습이 누적되고 있습니다"
                 )
                 .build();
+    }
+
+    /** 교직자용 강의 분석 대시보드 */
+    public CourseOverviewResponse getCourseOverview(Long courseId, Long instructorId) {
+        Course course = courseRepository.findById(courseId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.COURSE_NOT_FOUND));
+        if (!course.getInstructor().getId().equals(instructorId)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
+
+        List<Enrollment> enrollments = enrollmentRepository.findWithUserByCourseId(courseId);
+        long totalStudents = enrollments.size();
+
+        List<QuizAttempt> allAttempts = new ArrayList<>();
+        List<Integer> studentScores = new ArrayList<>();
+        long totalStudyTimeSum = 0L;
+        long activeStudents = 0L;
+        long excellent = 0, good = 0, average = 0, needsHelp = 0;
+
+        LocalDateTime activeSince = LocalDateTime.now().minusDays(ACTIVE_DAYS);
+
+        for (Enrollment e : enrollments) {
+            Long studentId = e.getUser().getId();
+            List<QuizAttempt> attempts = quizAttemptRepository.findByUserIdAndCourseId(studentId, courseId);
+            allAttempts.addAll(attempts);
+
+            int studentScore = computeOverallScore(attempts);
+            studentScores.add(studentScore);
+
+            long studyTime = learningLogRepository.sumDurationByUserIdAndCourseId(studentId, courseId);
+            totalStudyTimeSum += studyTime;
+
+            LocalDateTime lastActive = findLastActiveAt(studentId, courseId, attempts);
+            boolean isActive = lastActive != null && lastActive.isAfter(activeSince);
+            if (isActive) {
+                activeStudents++;
+            }
+
+            String status = classifyStudent(studentScore, lastActive, activeSince);
+            switch (status) {
+                case "EXCELLENT" -> excellent++;
+                case "GOOD" -> good++;
+                case "AVERAGE" -> average++;
+                default -> needsHelp++;
+            }
+        }
+
+        long totalAttempts = allAttempts.size();
+        long correctCount = allAttempts.stream().filter(a -> Boolean.TRUE.equals(a.getIsCorrect())).count();
+        double averageCorrectRate = totalAttempts == 0 ? 0.0 : (double) correctCount / totalAttempts;
+
+        int averageScore = studentScores.isEmpty()
+                ? 0
+                : (int) studentScores.stream().mapToInt(Integer::intValue).average().orElse(0.0);
+        long averageStudyTime = totalStudents == 0 ? 0L : totalStudyTimeSum / totalStudents;
+
+        List<WeakConceptDto> topWeak = computeWeakConcepts(allAttempts);
+        Map<String, Integer> competencies = normalizeCompetencies(null, averageScore);
+        List<WeeklyProgressDto> weekly = computeCourseWeeklyProgress(courseId, allAttempts);
+
+        return CourseOverviewResponse.builder()
+                .courseId(course.getId())
+                .courseTitle(course.getTitle())
+                .totalStudents(totalStudents)
+                .activeStudents(activeStudents)
+                .averageScore(averageScore)
+                .averageCorrectRate(round2(averageCorrectRate))
+                .averageStudyTime(averageStudyTime)
+                .totalQuizAttempts(totalAttempts)
+                .topWeakConcepts(topWeak)
+                .competencies(competencies)
+                .weeklyProgress(weekly)
+                .studentDistribution(StudentDistributionDto.builder()
+                        .excellent(excellent)
+                        .good(good)
+                        .average(average)
+                        .needsHelp(needsHelp)
+                        .build())
+                .build();
+    }
+
+    /** 교직자용 수강생 목록 */
+    public List<CourseStudentSummary> getCourseStudents(Long courseId, Long instructorId) {
+        Course course = courseRepository.findById(courseId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.COURSE_NOT_FOUND));
+        if (!course.getInstructor().getId().equals(instructorId)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
+
+        List<Enrollment> enrollments = enrollmentRepository.findWithUserByCourseId(courseId);
+        LocalDateTime activeSince = LocalDateTime.now().minusDays(ACTIVE_DAYS);
+
+        List<CourseStudentSummary> result = new ArrayList<>();
+        for (Enrollment e : enrollments) {
+            User student = e.getUser();
+            result.add(buildStudentSummary(student, courseId, activeSince));
+        }
+        return result;
+    }
+
+    /** 교직자용 수강생 개별 드릴다운 분석 */
+    public CourseStudentDetailResponse getCourseStudentDetail(Long courseId, Long studentUserId, Long instructorId) {
+        Course course = courseRepository.findById(courseId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.COURSE_NOT_FOUND));
+        if (!course.getInstructor().getId().equals(instructorId)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
+
+        if (!enrollmentRepository.existsByUserIdAndCourseId(studentUserId, courseId)) {
+            throw new BusinessException(ErrorCode.NOT_ENROLLED);
+        }
+
+        User student = enrollmentRepository.findByUserIdAndCourseId(studentUserId, courseId)
+                .map(Enrollment::getUser)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+
+        List<QuizAttempt> attempts = quizAttemptRepository.findByUserIdAndCourseId(studentUserId, courseId);
+        long totalAttempts = attempts.size();
+        long correctCount = attempts.stream().filter(a -> Boolean.TRUE.equals(a.getIsCorrect())).count();
+        double correctRate = totalAttempts == 0 ? 0.0 : (double) correctCount / totalAttempts;
+
+        int overallScore = computeOverallScore(attempts);
+        long totalStudyTime = learningLogRepository.sumDurationByUserIdAndCourseId(studentUserId, courseId);
+
+        LocalDateTime lastActive = findLastActiveAt(studentUserId, courseId, attempts);
+        LocalDateTime activeSince = LocalDateTime.now().minusDays(ACTIVE_DAYS);
+        String status = classifyStudent(overallScore, lastActive, activeSince);
+
+        List<WeakConceptDto> weakConcepts = computeWeakConcepts(attempts);
+        List<WeeklyProgressDto> weeklyProgress = computeStudentCourseWeeklyProgress(studentUserId, courseId, attempts);
+        Map<String, Integer> competencies = normalizeCompetencies(null, overallScore);
+
+        return CourseStudentDetailResponse.builder()
+                .userId(student.getId())
+                .userName(student.getName())
+                .userEmail(student.getEmail())
+                .courseId(course.getId())
+                .courseTitle(course.getTitle())
+                .overallScore(overallScore)
+                .totalStudyTime(totalStudyTime)
+                .totalQuizAttempts(totalAttempts)
+                .overallCorrectRate(round2(correctRate))
+                .lastActiveAt(lastActive)
+                .status(status)
+                .weakConcepts(weakConcepts)
+                .weeklyProgress(weeklyProgress)
+                .competencies(competencies)
+                .build();
+    }
+
+    private CourseStudentSummary buildStudentSummary(User student, Long courseId, LocalDateTime activeSince) {
+        Long studentId = student.getId();
+        List<QuizAttempt> attempts = quizAttemptRepository.findByUserIdAndCourseId(studentId, courseId);
+        long totalAttempts = attempts.size();
+        long correctCount = attempts.stream().filter(a -> Boolean.TRUE.equals(a.getIsCorrect())).count();
+        double correctRate = totalAttempts == 0 ? 0.0 : (double) correctCount / totalAttempts;
+
+        int overallScore = computeOverallScore(attempts);
+        long studyTime = learningLogRepository.sumDurationByUserIdAndCourseId(studentId, courseId);
+        LocalDateTime lastActive = findLastActiveAt(studentId, courseId, attempts);
+        String status = classifyStudent(overallScore, lastActive, activeSince);
+
+        return CourseStudentSummary.builder()
+                .userId(studentId)
+                .name(student.getName())
+                .email(student.getEmail())
+                .averageScore(overallScore)
+                .correctRate(round2(correctRate))
+                .totalQuizAttempts(totalAttempts)
+                .totalStudyTime(studyTime)
+                .lastActiveAt(lastActive)
+                .status(status)
+                .build();
+    }
+
+    private int computeOverallScore(List<QuizAttempt> attempts) {
+        if (attempts.isEmpty()) return 0;
+        return (int) attempts.stream()
+                .mapToInt(a -> a.getScore() == null ? 0 : a.getScore())
+                .average()
+                .orElse(0.0);
+    }
+
+    private LocalDateTime findLastActiveAt(Long studentId, Long courseId, List<QuizAttempt> attempts) {
+        LocalDateTime lastLearning = learningLogRepository.findMaxCreatedAtByUserIdAndCourseId(studentId, courseId);
+        LocalDateTime lastAttempt = attempts.stream()
+                .map(QuizAttempt::getAttemptedAt)
+                .max(Comparator.naturalOrder())
+                .orElse(null);
+
+        if (lastLearning == null) return lastAttempt;
+        if (lastAttempt == null) return lastLearning;
+        return lastLearning.isAfter(lastAttempt) ? lastLearning : lastAttempt;
+    }
+
+    private String classifyStudent(int overallScore, LocalDateTime lastActive, LocalDateTime activeSince) {
+        boolean inactive = lastActive == null || lastActive.isBefore(activeSince);
+        if (inactive) return "NEEDS_HELP";
+        if (overallScore >= EXCELLENT_THRESHOLD) return "EXCELLENT";
+        if (overallScore >= GOOD_THRESHOLD) return "GOOD";
+        if (overallScore >= AVERAGE_THRESHOLD) return "AVERAGE";
+        return "NEEDS_HELP";
     }
 
     /**
@@ -141,14 +361,7 @@ public class AnalysisService {
 
     private List<WeeklyProgressDto> computeWeeklyProgress(Long userId, List<QuizAttempt> attempts) {
         // 최근 4주에 대한 (학습 시간, 평균 점수) 집계
-        LocalDateTime now = LocalDateTime.now();
-        Map<String, long[]> weekMap = new LinkedHashMap<>();
-
-        for (int i = RECENT_WEEKS - 1; i >= 0; i--) {
-            LocalDateTime weekDate = now.minusWeeks(i);
-            String key = formatWeek(weekDate);
-            weekMap.put(key, new long[]{0, 0, 0}); // [studyTime, scoreSum, scoreCount]
-        }
+        Map<String, long[]> weekMap = initWeeklyBuckets();
 
         // 퀴즈 점수 집계
         for (QuizAttempt a : attempts) {
@@ -167,6 +380,67 @@ public class AnalysisService {
             v[0] += l.getDuration() == null ? 0 : l.getDuration();
         });
 
+        return toWeeklyProgressList(weekMap);
+    }
+
+    /** 학급 단위 최근 4주 진행도 — 학생 전체 합계 기반 */
+    private List<WeeklyProgressDto> computeCourseWeeklyProgress(Long courseId, List<QuizAttempt> allAttempts) {
+        Map<String, long[]> weekMap = initWeeklyBuckets();
+
+        for (QuizAttempt a : allAttempts) {
+            String key = formatWeek(a.getAttemptedAt());
+            long[] v = weekMap.get(key);
+            if (v == null) continue;
+            v[1] += a.getScore() == null ? 0 : a.getScore();
+            v[2] += 1;
+        }
+
+        List<LearningLog> logs = learningLogRepository.findByCourseIdOrderByCreatedAtDesc(courseId);
+        for (LearningLog l : logs) {
+            String key = formatWeek(l.getCreatedAt());
+            long[] v = weekMap.get(key);
+            if (v == null) continue;
+            v[0] += l.getDuration() == null ? 0 : l.getDuration();
+        }
+
+        return toWeeklyProgressList(weekMap);
+    }
+
+    /** 개별 학생의 강의 범위 주간 진행도 */
+    private List<WeeklyProgressDto> computeStudentCourseWeeklyProgress(Long userId, Long courseId, List<QuizAttempt> attempts) {
+        Map<String, long[]> weekMap = initWeeklyBuckets();
+
+        for (QuizAttempt a : attempts) {
+            String key = formatWeek(a.getAttemptedAt());
+            long[] v = weekMap.get(key);
+            if (v == null) continue;
+            v[1] += a.getScore() == null ? 0 : a.getScore();
+            v[2] += 1;
+        }
+
+        List<LearningLog> logs = learningLogRepository.findByUserIdAndCourseIdOrderByCreatedAtDesc(userId, courseId);
+        for (LearningLog l : logs) {
+            String key = formatWeek(l.getCreatedAt());
+            long[] v = weekMap.get(key);
+            if (v == null) continue;
+            v[0] += l.getDuration() == null ? 0 : l.getDuration();
+        }
+
+        return toWeeklyProgressList(weekMap);
+    }
+
+    private Map<String, long[]> initWeeklyBuckets() {
+        LocalDateTime now = LocalDateTime.now();
+        Map<String, long[]> weekMap = new LinkedHashMap<>();
+        for (int i = RECENT_WEEKS - 1; i >= 0; i--) {
+            LocalDateTime weekDate = now.minusWeeks(i);
+            String key = formatWeek(weekDate);
+            weekMap.put(key, new long[]{0, 0, 0}); // [studyTime, scoreSum, scoreCount]
+        }
+        return weekMap;
+    }
+
+    private List<WeeklyProgressDto> toWeeklyProgressList(Map<String, long[]> weekMap) {
         List<WeeklyProgressDto> result = new ArrayList<>();
         for (Map.Entry<String, long[]> e : weekMap.entrySet()) {
             long[] v = e.getValue();

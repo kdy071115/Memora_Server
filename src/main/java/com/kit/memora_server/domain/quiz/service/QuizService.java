@@ -5,10 +5,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kit.memora_server.domain.lecture.entity.Lecture;
 import com.kit.memora_server.domain.lecture.repository.LectureRepository;
 import com.kit.memora_server.domain.quiz.dto.QuizAttemptResponse;
+import com.kit.memora_server.domain.quiz.dto.QuizCreateRequest;
 import com.kit.memora_server.domain.quiz.dto.QuizGenerateRequest;
 import com.kit.memora_server.domain.quiz.dto.QuizResponse;
 import com.kit.memora_server.domain.quiz.dto.QuizSubmitRequest;
 import com.kit.memora_server.domain.quiz.dto.QuizSubmitResponse;
+import com.kit.memora_server.domain.quiz.dto.QuizUpdateRequest;
 import com.kit.memora_server.domain.quiz.entity.Quiz;
 import com.kit.memora_server.domain.quiz.entity.QuizAttempt;
 import com.kit.memora_server.domain.quiz.repository.QuizAttemptRepository;
@@ -131,5 +133,79 @@ public class QuizService {
         List<QuizAttempt> attempts = quizAttemptRepository
                 .findByUserIdAndQuiz_LectureIdOrderByAttemptedAtDesc(userId, lectureId);
         return attempts.stream().map(QuizAttemptResponse::from).toList();
+    }
+
+    @Transactional
+    public QuizResponse create(Long lectureId, Long instructorId, QuizCreateRequest request) {
+        Lecture lecture = lectureRepository.findById(lectureId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.LECTURE_NOT_FOUND));
+
+        if (!lecture.getCourse().getInstructor().getId().equals(instructorId)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
+
+        Quiz quiz = Quiz.builder()
+                .lecture(lecture)
+                .question(request.getQuestion())
+                .quizType(request.getQuizType())
+                .options(serializeOptions(request.getOptions()))
+                .correctAnswer(request.getCorrectAnswer())
+                .explanation(request.getExplanation())
+                .difficulty(request.getDifficulty() != null ? request.getDifficulty() : "MEDIUM")
+                .conceptTag(request.getConceptTag())
+                .build();
+
+        Quiz saved = quizRepository.save(quiz);
+        return QuizResponse.from(saved, objectMapper);
+    }
+
+    @Transactional
+    public QuizResponse update(Long quizId, Long instructorId, QuizUpdateRequest request) {
+        Quiz quiz = quizRepository.findById(quizId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.QUIZ_NOT_FOUND));
+
+        if (!quiz.getLecture().getCourse().getInstructor().getId().equals(instructorId)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
+
+        quiz.update(
+                request.getQuestion(),
+                request.getQuizType(),
+                serializeOptions(request.getOptions()),
+                request.getCorrectAnswer(),
+                request.getExplanation(),
+                request.getDifficulty(),
+                request.getConceptTag()
+        );
+
+        return QuizResponse.from(quiz, objectMapper);
+    }
+
+    @Transactional
+    public void delete(Long quizId, Long instructorId) {
+        Quiz quiz = quizRepository.findById(quizId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.QUIZ_NOT_FOUND));
+
+        if (!quiz.getLecture().getCourse().getInstructor().getId().equals(instructorId)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
+
+        if (quizAttemptRepository.existsByQuizId(quizId)) {
+            throw new BusinessException(ErrorCode.QUIZ_HAS_ATTEMPTS);
+        }
+
+        quizRepository.delete(quiz);
+    }
+
+    private String serializeOptions(List<String> options) {
+        if (options == null || options.isEmpty()) {
+            return null;
+        }
+        try {
+            return objectMapper.writeValueAsString(options);
+        } catch (JsonProcessingException e) {
+            log.warn("options 직렬화 실패: {}", e.getMessage());
+            return null;
+        }
     }
 }
