@@ -39,3 +39,7 @@ out/
 ### Environment ###
 .env
 *.env
+
+### Local file storage ###
+/uploads/
+uploads/
