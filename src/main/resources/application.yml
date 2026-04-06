@@ -31,6 +31,9 @@ ai:
   server:
     url: ${AI_SERVER_URL:http://localhost:8000}
 
+cors:
+  allowed-origin-patterns: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}
+
 cloud:
   aws:
     s3:
