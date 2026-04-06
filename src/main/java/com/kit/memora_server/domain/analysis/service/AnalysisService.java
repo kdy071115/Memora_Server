@@ -34,6 +34,11 @@ public class AnalysisService {
     private static final int WEAK_CONCEPT_LIMIT = 5;
     private static final int RECENT_WEEKS = 4;
 
+    /** 프론트 레이더 차트가 고정으로 기대하는 6개 역량 키 (순서 유지) */
+    private static final List<String> COMPETENCY_KEYS = List.of(
+            "개념 이해력", "수학적 사고", "비판적 추론", "암기력", "응용력", "문제 해결"
+    );
+
     private final QuizAttemptRepository quizAttemptRepository;
     private final LearningLogRepository learningLogRepository;
     private final EnrollmentRepository enrollmentRepository;
@@ -77,7 +82,31 @@ public class AnalysisService {
                 .recommendations(aiRes.getRecommendations() != null ? aiRes.getRecommendations() : List.of())
                 .motivation(aiRes.getMotivation())
                 .weeklyProgress(weeklyProgress)
+                .competencies(normalizeCompetencies(aiRes.getCompetencies(), overallScore))
+                .maxGrowthIndicator(
+                        aiRes.getMaxGrowthIndicator() != null && !aiRes.getMaxGrowthIndicator().isBlank()
+                                ? aiRes.getMaxGrowthIndicator()
+                                : "꾸준한 학습이 누적되고 있습니다"
+                )
                 .build();
+    }
+
+    /**
+     * AI 서버가 내려준 역량 맵을 검증해 고정 6개 키 / 0~150 정수 맵으로 정규화.
+     * 키 누락 또는 null 인 경우 overallScore 기반 기본값으로 채운다.
+     */
+    private Map<String, Integer> normalizeCompetencies(Map<String, Integer> raw, int overallScore) {
+        int fallback = Math.max(40, Math.min(140, overallScore == 0 ? 70 : overallScore));
+        Map<String, Integer> result = new LinkedHashMap<>();
+        for (String key : COMPETENCY_KEYS) {
+            Integer value = raw == null ? null : raw.get(key);
+            if (value == null) {
+                result.put(key, fallback);
+            } else {
+                result.put(key, Math.max(0, Math.min(150, value)));
+            }
+        }
+        return result;
     }
 
     private List<WeakConceptDto> computeWeakConcepts(List<QuizAttempt> attempts) {
