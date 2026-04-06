@@ -3,7 +3,7 @@ spring:
     name: Memora-Server
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/memora
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/memora}
     username: ${DB_USERNAME:memora}
     password: ${DB_PASSWORD:memora}
     driver-class-name: org.postgresql.Driver
