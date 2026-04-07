@@ -2,6 +2,8 @@ package com.kit.memora_server.domain.lecture.service;
 
 import com.kit.memora_server.domain.course.entity.Course;
 import com.kit.memora_server.domain.course.repository.CourseRepository;
+import com.kit.memora_server.domain.document.entity.Document;
+import com.kit.memora_server.domain.document.repository.DocumentChunkRepository;
 import com.kit.memora_server.domain.document.repository.DocumentRepository;
 import com.kit.memora_server.domain.lecture.dto.LectureRequest;
 import com.kit.memora_server.domain.lecture.dto.LectureResponse;
@@ -23,6 +25,7 @@ public class LectureService {
     private final LectureRepository lectureRepository;
     private final CourseRepository courseRepository;
     private final DocumentRepository documentRepository;
+    private final DocumentChunkRepository documentChunkRepository;
 
     @Transactional
     public LectureResponse create(Long courseId, Long instructorId, LectureRequest request) {
@@ -44,6 +47,41 @@ public class LectureService {
 
         Lecture saved = lectureRepository.save(lecture);
         return LectureResponse.from(saved, 0, false);
+    }
+
+    @Transactional
+    public void delete(Long lectureId, Long instructorId) {
+        Lecture lecture = lectureRepository.findById(lectureId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.LECTURE_NOT_FOUND));
+
+        if (!lecture.getCourse().getInstructor().getId().equals(instructorId)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
+
+        // 차시에 속한 자료(문서)와 청크를 모두 정리한 뒤 차시를 삭제합니다.
+        List<Document> documents = documentRepository.findByLectureId(lectureId);
+        for (Document doc : documents) {
+            documentChunkRepository.deleteByDocumentId(doc.getId());
+        }
+        documentRepository.deleteAll(documents);
+
+        lectureRepository.delete(lecture);
+    }
+
+    @Transactional
+    public LectureResponse update(Long lectureId, Long instructorId, LectureRequest request) {
+        Lecture lecture = lectureRepository.findById(lectureId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.LECTURE_NOT_FOUND));
+
+        if (!lecture.getCourse().getInstructor().getId().equals(instructorId)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
+
+        lecture.update(request.getTitle(), request.getDescription());
+
+        long docCount = documentRepository.countByLectureId(lecture.getId());
+        boolean hasCompleted = documentRepository.existsByLectureIdAndProcessingStatus(lecture.getId(), "COMPLETED");
+        return LectureResponse.from(lecture, docCount, hasCompleted);
     }
 
     public List<LectureResponse> getByCourse(Long courseId) {

@@ -40,4 +40,25 @@ public class LectureController {
     public ResponseEntity<ApiResponse<List<LectureResponse>>> getByCourse(@PathVariable Long courseId) {
         return ResponseEntity.ok(ApiResponse.ok(lectureService.getByCourse(courseId)));
     }
+
+    @Operation(summary = "차시 수정")
+    @PutMapping("/api/lectures/{lectureId}")
+    @PreAuthorize("hasRole('INSTRUCTOR')")
+    public ResponseEntity<ApiResponse<LectureResponse>> update(
+            @PathVariable Long lectureId,
+            @AuthenticationPrincipal CustomUserDetails user,
+            @Valid @RequestBody LectureRequest request) {
+        LectureResponse response = lectureService.update(lectureId, user.getId(), request);
+        return ResponseEntity.ok(ApiResponse.ok("차시가 수정되었습니다.", response));
+    }
+
+    @Operation(summary = "차시 삭제")
+    @DeleteMapping("/api/lectures/{lectureId}")
+    @PreAuthorize("hasRole('INSTRUCTOR')")
+    public ResponseEntity<ApiResponse<Void>> delete(
+            @PathVariable Long lectureId,
+            @AuthenticationPrincipal CustomUserDetails user) {
+        lectureService.delete(lectureId, user.getId());
+        return ResponseEntity.ok(ApiResponse.ok("차시가 삭제되었습니다."));
+    }
 }
