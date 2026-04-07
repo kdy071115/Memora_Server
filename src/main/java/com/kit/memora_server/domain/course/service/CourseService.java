@@ -19,6 +19,7 @@ import com.kit.memora_server.domain.quiz.entity.Quiz;
 import com.kit.memora_server.domain.quiz.repository.QuizAttemptRepository;
 import com.kit.memora_server.domain.quiz.repository.QuizRepository;
 import com.kit.memora_server.domain.user.entity.User;
+import com.kit.memora_server.domain.user.enums.UserRole;
 import com.kit.memora_server.domain.user.repository.UserRepository;
 import com.kit.memora_server.global.exception.BusinessException;
 import com.kit.memora_server.global.exception.ErrorCode;
@@ -72,14 +73,30 @@ public class CourseService {
     }
 
     public Page<CourseResponse> getAll(Long userId, Pageable pageable) {
-        return courseRepository.findByStatus("ACTIVE", pageable)
-                .map(course -> {
-                    long students = enrollmentRepository.countByCourseId(course.getId());
-                    long lectures = lectureRepository.countByCourseId(course.getId());
-                    boolean enrolled = userId != null && enrollmentRepository.existsByUserIdAndCourseId(userId, course.getId());
-                    boolean isOwner = userId != null && course.getInstructor().getId().equals(userId);
-                    return CourseResponse.from(course, students, lectures, enrolled, isOwner);
-                });
+        // 비로그인 사용자에게는 빈 목록을 반환합니다.
+        if (userId == null) {
+            return Page.empty(pageable);
+        }
+
+        User currentUser = userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+
+        Page<Course> coursePage;
+        if (currentUser.getRole() == UserRole.INSTRUCTOR) {
+            // 교강사: 본인이 개설한 ACTIVE 강의만
+            coursePage = courseRepository.findByInstructorIdAndStatus(userId, "ACTIVE", pageable);
+        } else {
+            // 학생: 본인이 수강 등록한 ACTIVE 강의만
+            coursePage = courseRepository.findEnrolledCoursesByUserId(userId, "ACTIVE", pageable);
+        }
+
+        return coursePage.map(course -> {
+            long students = enrollmentRepository.countByCourseId(course.getId());
+            long lectures = lectureRepository.countByCourseId(course.getId());
+            boolean enrolled = enrollmentRepository.existsByUserIdAndCourseId(userId, course.getId());
+            boolean isOwner = course.getInstructor().getId().equals(userId);
+            return CourseResponse.from(course, students, lectures, enrolled, isOwner);
+        });
     }
 
     public CourseResponse getById(Long courseId, Long userId) {
