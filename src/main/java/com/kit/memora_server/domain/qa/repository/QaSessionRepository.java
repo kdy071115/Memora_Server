@@ -10,4 +10,6 @@ public interface QaSessionRepository extends JpaRepository<QaSession, Long> {
     List<QaSession> findByUserIdOrderByUpdatedAtDesc(Long userId);
 
     List<QaSession> findByUserIdAndLectureIdOrderByUpdatedAtDesc(Long userId, Long lectureId);
+
+    List<QaSession> findByLectureId(Long lectureId);
 }

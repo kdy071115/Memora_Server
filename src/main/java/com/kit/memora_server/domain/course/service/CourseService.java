@@ -6,7 +6,18 @@ import com.kit.memora_server.domain.course.entity.Course;
 import com.kit.memora_server.domain.course.entity.Enrollment;
 import com.kit.memora_server.domain.course.repository.CourseRepository;
 import com.kit.memora_server.domain.course.repository.EnrollmentRepository;
+import com.kit.memora_server.domain.document.entity.Document;
+import com.kit.memora_server.domain.document.repository.DocumentChunkRepository;
+import com.kit.memora_server.domain.document.repository.DocumentRepository;
+import com.kit.memora_server.domain.lecture.entity.Lecture;
 import com.kit.memora_server.domain.lecture.repository.LectureRepository;
+import com.kit.memora_server.domain.notice.repository.NoticeRepository;
+import com.kit.memora_server.domain.qa.entity.QaSession;
+import com.kit.memora_server.domain.qa.repository.QaMessageRepository;
+import com.kit.memora_server.domain.qa.repository.QaSessionRepository;
+import com.kit.memora_server.domain.quiz.entity.Quiz;
+import com.kit.memora_server.domain.quiz.repository.QuizAttemptRepository;
+import com.kit.memora_server.domain.quiz.repository.QuizRepository;
 import com.kit.memora_server.domain.user.entity.User;
 import com.kit.memora_server.domain.user.repository.UserRepository;
 import com.kit.memora_server.global.exception.BusinessException;
@@ -18,6 +29,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -34,6 +46,13 @@ public class CourseService {
     private final EnrollmentRepository enrollmentRepository;
     private final LectureRepository lectureRepository;
     private final UserRepository userRepository;
+    private final NoticeRepository noticeRepository;
+    private final DocumentRepository documentRepository;
+    private final DocumentChunkRepository documentChunkRepository;
+    private final QuizRepository quizRepository;
+    private final QuizAttemptRepository quizAttemptRepository;
+    private final QaSessionRepository qaSessionRepository;
+    private final QaMessageRepository qaMessageRepository;
     private final SecureRandom secureRandom = new SecureRandom();
 
     @Transactional
@@ -99,6 +118,42 @@ public class CourseService {
             throw new BusinessException(ErrorCode.FORBIDDEN);
         }
 
+        // 자식 → 부모 순서로 안전하게 정리합니다.
+        // 1. 강의에 속한 모든 차시
+        List<Lecture> lectures = lectureRepository.findByCourseIdOrderByOrderIndexAsc(courseId);
+        for (Lecture lecture : lectures) {
+            Long lectureId = lecture.getId();
+
+            // 1-1. Quiz attempts → Quizzes
+            List<Quiz> quizzes = quizRepository.findByLectureId(lectureId);
+            for (Quiz quiz : quizzes) {
+                quizAttemptRepository.deleteByQuizId(quiz.getId());
+            }
+            quizRepository.deleteAll(quizzes);
+
+            // 1-2. QaMessages → QaSessions
+            List<QaSession> sessions = qaSessionRepository.findByLectureId(lectureId);
+            for (QaSession session : sessions) {
+                qaMessageRepository.deleteBySessionId(session.getId());
+            }
+            qaSessionRepository.deleteAll(sessions);
+
+            // 1-3. DocumentChunks → Documents
+            List<Document> documents = documentRepository.findByLectureId(lectureId);
+            for (Document document : documents) {
+                documentChunkRepository.deleteByDocumentId(document.getId());
+            }
+            documentRepository.deleteAll(documents);
+        }
+
+        // 2. 차시 자체
+        lectureRepository.deleteAll(lectures);
+
+        // 3. 강의 직속 자료
+        noticeRepository.deleteAll(noticeRepository.findByCourseIdOrderByPinnedDescCreatedAtDesc(courseId));
+        enrollmentRepository.deleteAll(enrollmentRepository.findByCourseId(courseId));
+
+        // 4. 강의
         courseRepository.delete(course);
     }
 

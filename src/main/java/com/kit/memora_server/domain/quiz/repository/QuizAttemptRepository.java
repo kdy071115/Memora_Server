@@ -2,12 +2,18 @@ package com.kit.memora_server.domain.quiz.repository;
 
 import com.kit.memora_server.domain.quiz.entity.QuizAttempt;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 
 public interface QuizAttemptRepository extends JpaRepository<QuizAttempt, Long> {
+
+    @Modifying
+    @Query("DELETE FROM QuizAttempt qa WHERE qa.quiz.id = :quizId")
+    void deleteByQuizId(@Param("quizId") Long quizId);
+
 
     List<QuizAttempt> findByUserIdAndQuiz_LectureIdOrderByAttemptedAtDesc(Long userId, Long lectureId);
 
