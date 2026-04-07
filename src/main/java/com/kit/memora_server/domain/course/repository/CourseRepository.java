@@ -17,8 +17,12 @@ public interface CourseRepository extends JpaRepository<Course, Long> {
 
     Page<Course> findByInstructorIdAndStatus(Long instructorId, String status, Pageable pageable);
 
-    @Query("SELECT c FROM Course c JOIN Enrollment e ON e.course = c " +
-            "WHERE e.user.id = :userId AND c.status = :status")
+    @Query(
+            value = "SELECT e.course FROM Enrollment e " +
+                    "WHERE e.user.id = :userId AND e.course.status = :status",
+            countQuery = "SELECT COUNT(e) FROM Enrollment e " +
+                    "WHERE e.user.id = :userId AND e.course.status = :status"
+    )
     Page<Course> findEnrolledCoursesByUserId(@Param("userId") Long userId,
                                              @Param("status") String status,
                                              Pageable pageable);

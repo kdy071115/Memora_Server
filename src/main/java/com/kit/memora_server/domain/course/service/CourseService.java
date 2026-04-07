@@ -24,7 +24,9 @@ import com.kit.memora_server.domain.user.repository.UserRepository;
 import com.kit.memora_server.global.exception.BusinessException;
 import com.kit.memora_server.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +34,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.security.SecureRandom;
 import java.util.List;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -81,22 +84,52 @@ public class CourseService {
         User currentUser = userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
-        Page<Course> coursePage;
+        log.info("[Course.getAll] userId={} role={}", userId, currentUser.getRole());
+
         if (currentUser.getRole() == UserRole.INSTRUCTOR) {
             // 교강사: 본인이 개설한 ACTIVE 강의만
-            coursePage = courseRepository.findByInstructorIdAndStatus(userId, "ACTIVE", pageable);
-        } else {
-            // 학생: 본인이 수강 등록한 ACTIVE 강의만
-            coursePage = courseRepository.findEnrolledCoursesByUserId(userId, "ACTIVE", pageable);
+            Page<Course> coursePage = courseRepository.findByInstructorIdAndStatus(userId, "ACTIVE", pageable);
+            log.info("[Course.getAll] INSTRUCTOR result count={}", coursePage.getTotalElements());
+            return coursePage.map(course -> toResponse(course, userId));
         }
 
-        return coursePage.map(course -> {
-            long students = enrollmentRepository.countByCourseId(course.getId());
-            long lectures = lectureRepository.countByCourseId(course.getId());
-            boolean enrolled = enrollmentRepository.existsByUserIdAndCourseId(userId, course.getId());
-            boolean isOwner = course.getInstructor().getId().equals(userId);
-            return CourseResponse.from(course, students, lectures, enrolled, isOwner);
-        });
+        // 학생: 본인이 수강 등록한 ACTIVE 강의만
+        // 이미 검증된 enrollmentRepository.findByUserId 를 사용해 조회한 뒤 메모리에서 페이징.
+        // (학생당 수강 강의 수가 수십 개를 넘지 않으므로 충분히 효율적)
+        List<Enrollment> enrollments = enrollmentRepository.findByUserId(userId);
+        log.info("[Course.getAll] STUDENT enrollment rows for user {} = {}", userId, enrollments.size());
+
+        List<Course> enrolledCourses = enrollments.stream()
+                .map(e -> {
+                    Course c = e.getCourse();
+                    log.info("  enrollment id={} course={} status={}",
+                            e.getId(),
+                            c != null ? c.getId() : null,
+                            c != null ? c.getStatus() : "null");
+                    return c;
+                })
+                .filter(c -> c != null && "ACTIVE".equals(c.getStatus()))
+                .toList();
+        log.info("[Course.getAll] STUDENT filtered ACTIVE courses = {}", enrolledCourses.size());
+
+        int total = enrolledCourses.size();
+        int start = (int) pageable.getOffset();
+        int end = Math.min(start + pageable.getPageSize(), total);
+        List<CourseResponse> pageContent = (start >= total)
+                ? List.of()
+                : enrolledCourses.subList(start, end).stream()
+                        .map(course -> toResponse(course, userId))
+                        .toList();
+
+        return new PageImpl<>(pageContent, pageable, total);
+    }
+
+    private CourseResponse toResponse(Course course, Long userId) {
+        long students = enrollmentRepository.countByCourseId(course.getId());
+        long lectures = lectureRepository.countByCourseId(course.getId());
+        boolean enrolled = enrollmentRepository.existsByUserIdAndCourseId(userId, course.getId());
+        boolean isOwner = course.getInstructor().getId().equals(userId);
+        return CourseResponse.from(course, students, lectures, enrolled, isOwner);
     }
 
     public CourseResponse getById(Long courseId, Long userId) {
