@@ -2,6 +2,7 @@ package com.kit.memora_server.domain.quiz.controller;
 
 import com.kit.memora_server.domain.quiz.dto.QuizAttemptResponse;
 import com.kit.memora_server.domain.quiz.dto.QuizCreateRequest;
+import com.kit.memora_server.domain.quiz.dto.QuizDetailResponse;
 import com.kit.memora_server.domain.quiz.dto.QuizGenerateRequest;
 import com.kit.memora_server.domain.quiz.dto.QuizResponse;
 import com.kit.memora_server.domain.quiz.dto.QuizSubmitRequest;
@@ -79,6 +80,15 @@ public class QuizController {
             @PathVariable Long lectureId,
             @RequestParam(required = false) String difficulty) {
         return ResponseEntity.ok(ApiResponse.ok(quizService.getQuizzesByLecture(lectureId, difficulty)));
+    }
+
+    @Operation(summary = "문제 관리용 목록 (정답·해설 포함, 강사 전용)")
+    @GetMapping("/api/lectures/{lectureId}/quizzes/manage")
+    @PreAuthorize("hasRole('INSTRUCTOR')")
+    public ResponseEntity<ApiResponse<List<QuizDetailResponse>>> getForManagement(
+            @PathVariable Long lectureId,
+            @AuthenticationPrincipal CustomUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.ok(quizService.getQuizzesForManagement(lectureId, user.getId())));
     }
 
     @Operation(summary = "답안 제출 + 채점")

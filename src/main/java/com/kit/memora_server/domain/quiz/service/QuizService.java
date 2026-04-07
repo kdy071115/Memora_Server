@@ -6,6 +6,7 @@ import com.kit.memora_server.domain.lecture.entity.Lecture;
 import com.kit.memora_server.domain.lecture.repository.LectureRepository;
 import com.kit.memora_server.domain.quiz.dto.QuizAttemptResponse;
 import com.kit.memora_server.domain.quiz.dto.QuizCreateRequest;
+import com.kit.memora_server.domain.quiz.dto.QuizDetailResponse;
 import com.kit.memora_server.domain.quiz.dto.QuizGenerateRequest;
 import com.kit.memora_server.domain.quiz.dto.QuizResponse;
 import com.kit.memora_server.domain.quiz.dto.QuizSubmitRequest;
@@ -97,6 +98,22 @@ public class QuizService {
                 : quizRepository.findByLectureId(lectureId);
         return quizzes.stream()
                 .map(q -> QuizResponse.from(q, objectMapper))
+                .toList();
+    }
+
+    /**
+     * 강사용: 정답·해설을 포함한 전체 퀴즈 목록을 반환합니다. 차시 소유 강사만 호출 가능.
+     */
+    public List<QuizDetailResponse> getQuizzesForManagement(Long lectureId, Long instructorId) {
+        Lecture lecture = lectureRepository.findById(lectureId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.LECTURE_NOT_FOUND));
+
+        if (!lecture.getCourse().getInstructor().getId().equals(instructorId)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
+
+        return quizRepository.findByLectureId(lectureId).stream()
+                .map(q -> QuizDetailResponse.from(q, objectMapper))
                 .toList();
     }
 
