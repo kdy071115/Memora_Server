@@ -24,8 +24,8 @@ spring:
 
 jwt:
   secret: ${JWT_SECRET:memora-default-secret-key-for-development-only-change-in-production}
-  access-expiration: 3600000
-  refresh-expiration: 604800000
+  access-expiration: 10800000   # 3시간
+  refresh-expiration: 604800000 # 7일
 
 ai:
   server:

@@ -1,9 +1,11 @@
 package com.kit.memora_server.global.exception;
 
 import com.kit.memora_server.global.common.ErrorResponse;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -43,6 +45,16 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .badRequest()
                 .body(ErrorResponse.of(400, "FILE_TOO_LARGE", "파일 크기는 50MB를 초과할 수 없습니다."));
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ErrorResponse> handleMethodNotSupported(HttpRequestMethodNotSupportedException e,
+                                                                  HttpServletRequest request) {
+        log.warn("MethodNotSupported: {} {} (supported: {})",
+                request.getMethod(), request.getRequestURI(), e.getSupportedHttpMethods());
+        return ResponseEntity
+                .status(405)
+                .body(ErrorResponse.of(405, "METHOD_NOT_ALLOWED", "지원하지 않는 HTTP 메서드입니다."));
     }
 
     @ExceptionHandler(Exception.class)
