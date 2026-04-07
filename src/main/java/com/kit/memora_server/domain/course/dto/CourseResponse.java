@@ -1,6 +1,7 @@
 package com.kit.memora_server.domain.course.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.kit.memora_server.domain.course.entity.Course;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
@@ -38,6 +39,7 @@ public class CourseResponse {
     private String status;
 
     @Schema(description = "현재 사용자의 수강 여부", example = "true")
+    @JsonProperty("isEnrolled")
     private boolean isEnrolled;
 
     @Schema(description = "생성 시각", example = "2026-03-01T09:00:00")
