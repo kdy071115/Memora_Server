@@ -11,6 +11,8 @@ import com.kit.memora_server.infra.ai.dto.AiQuizGenerateRequest;
 import com.kit.memora_server.infra.ai.dto.AiQuizGenerateResponse;
 import com.kit.memora_server.infra.ai.dto.AiQuizGradeRequest;
 import com.kit.memora_server.infra.ai.dto.AiQuizGradeResponse;
+import com.kit.memora_server.infra.ai.dto.AiSelfExplainRequest;
+import com.kit.memora_server.infra.ai.dto.AiSelfExplainResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -81,6 +83,23 @@ public class AiServerClient {
             throw new BusinessException(ErrorCode.AI_SERVER_ERROR);
         } catch (Exception e) {
             log.error("AI 서버 채점 실패: {}", e.getMessage());
+            throw new BusinessException(ErrorCode.AI_SERVER_ERROR);
+        }
+    }
+
+    public AiSelfExplainResponse evaluateSelfExplanation(AiSelfExplainRequest request) {
+        try {
+            return aiWebClient.post()
+                    .uri("/ai/self-explain")
+                    .bodyValue(request)
+                    .retrieve()
+                    .bodyToMono(AiSelfExplainResponse.class)
+                    .block();
+        } catch (WebClientResponseException e) {
+            log.error("AI 서버 자기 설명 평가 실패: status={}, body={}", e.getStatusCode(), e.getResponseBodyAsString());
+            throw new BusinessException(ErrorCode.AI_SERVER_ERROR);
+        } catch (Exception e) {
+            log.error("AI 서버 자기 설명 평가 실패: {}", e.getMessage());
             throw new BusinessException(ErrorCode.AI_SERVER_ERROR);
         }
     }

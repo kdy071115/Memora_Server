@@ -14,6 +14,10 @@ public interface LearningLogRepository extends JpaRepository<LearningLog, Long> 
 
     List<LearningLog> findByUserIdAndLectureId(Long userId, Long lectureId);
 
+    List<LearningLog> findByUserIdAndActivityTypeOrderByCreatedAtDesc(Long userId, String activityType);
+
+    List<LearningLog> findByUserIdAndLectureIdAndActivityTypeOrderByCreatedAtDesc(Long userId, Long lectureId, String activityType);
+
     @Query("SELECT COALESCE(SUM(l.duration), 0) FROM LearningLog l WHERE l.user.id = :userId")
     long sumDurationByUserId(@Param("userId") Long userId);
 
