@@ -104,33 +104,17 @@ public class CourseService {
         User currentUser = userRepository.findById(userId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
 
-        log.info("[Course.getAll] userId={} role={}", userId, currentUser.getRole());
-
         if (currentUser.getRole() == UserRole.INSTRUCTOR) {
             // 교강사: 본인이 개설한 ACTIVE 강의만
             Page<Course> coursePage = courseRepository.findByInstructorIdAndStatus(userId, "ACTIVE", pageable);
-            log.info("[Course.getAll] INSTRUCTOR result count={}", coursePage.getTotalElements());
             return coursePage.map(course -> toResponse(course, userId));
         }
 
-        // 학생: 본인이 수강 등록한 ACTIVE 강의만
-        // 이미 검증된 enrollmentRepository.findByUserId 를 사용해 조회한 뒤 메모리에서 페이징.
-        // (학생당 수강 강의 수가 수십 개를 넘지 않으므로 충분히 효율적)
-        List<Enrollment> enrollments = enrollmentRepository.findByUserId(userId);
-        log.info("[Course.getAll] STUDENT enrollment rows for user {} = {}", userId, enrollments.size());
-
-        List<Course> enrolledCourses = enrollments.stream()
-                .map(e -> {
-                    Course c = e.getCourse();
-                    log.info("  enrollment id={} course={} status={}",
-                            e.getId(),
-                            c != null ? c.getId() : null,
-                            c != null ? c.getStatus() : "null");
-                    return c;
-                })
+        // 학생: 본인이 수강 등록한 ACTIVE 강의만 (학생당 수강 강의가 많지 않으므로 메모리 페이징)
+        List<Course> enrolledCourses = enrollmentRepository.findByUserId(userId).stream()
+                .map(Enrollment::getCourse)
                 .filter(c -> c != null && "ACTIVE".equals(c.getStatus()))
                 .toList();
-        log.info("[Course.getAll] STUDENT filtered ACTIVE courses = {}", enrolledCourses.size());
 
         int total = enrolledCourses.size();
         int start = (int) pageable.getOffset();
