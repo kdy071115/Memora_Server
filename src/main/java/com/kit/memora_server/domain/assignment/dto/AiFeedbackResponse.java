@@ -10,8 +10,16 @@ import java.util.List;
 @Getter
 @Builder
 @AllArgsConstructor
+@com.fasterxml.jackson.databind.annotation.JsonDeserialize
+@com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
 @Schema(description = "강사용 AI 과제 피드백 초안")
 public class AiFeedbackResponse {
+
+    @Schema(description = "PENDING / READY / FAILED — 캐시 polling 시 상태 확인용")
+    private String status;
+
+    @Schema(description = "FAILED 일 때 에러 메시지")
+    private String errorMessage;
 
     @Schema(description = "0~100 종합 점수")
     private Integer overallScore;

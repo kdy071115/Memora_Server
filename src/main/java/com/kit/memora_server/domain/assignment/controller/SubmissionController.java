@@ -141,15 +141,17 @@ public class SubmissionController {
 
     // ── Comments ──
 
-    @Operation(summary = "강사용 — 제출물 AI 피드백 초안 생성",
-            description = "학생 제출물(글 + 첨부 PDF/텍스트)을 과제 주제와 비교해 AI 가 강사용 피드백 초안을 만들어줍니다. 결과는 강사 전용 캐시에 저장되어 다음에 다시 열어볼 수 있으며, 학생에게는 절대 노출되지 않습니다.")
+    @Operation(summary = "강사용 — 제출물 AI 피드백 초안 생성 (비동기)",
+            description = "학생 제출물(글 + 첨부 PDF/텍스트)을 과제 주제와 비교해 AI 가 피드백 초안을 만들어줍니다. " +
+                    "즉시 PENDING 상태를 반환하고 백그라운드에서 처리되므로, 클라이언트는 GET /ai-feedback 으로 polling 해 " +
+                    "status 가 READY 가 되기를 기다리세요. 결과는 강사 전용 캐시에 저장되며 학생에게는 절대 노출되지 않습니다.")
     @PostMapping("/api/submissions/{submissionId}/ai-feedback")
     @PreAuthorize("hasRole('INSTRUCTOR')")
     public ResponseEntity<ApiResponse<AiFeedbackResponse>> aiFeedback(
             @PathVariable Long submissionId,
             @AuthenticationPrincipal CustomUserDetails user) {
-        return ResponseEntity.ok(ApiResponse.ok("AI 피드백 초안을 생성했습니다.",
-                submissionService.requestAiFeedback(user.getId(), submissionId)));
+        return ResponseEntity.ok(ApiResponse.ok("AI 피드백 생성을 시작했습니다.",
+                submissionService.startAiFeedback(user.getId(), submissionId)));
     }
 
     @Operation(summary = "강사용 — 캐시된 AI 피드백 조회",

@@ -31,6 +31,9 @@ import com.kit.memora_server.global.exception.BusinessException;
 import com.kit.memora_server.global.exception.ErrorCode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -56,6 +59,15 @@ public class SubmissionService {
     private final AiServerClient aiServerClient;
     private final AiSubmissionFeedbackRepository aiSubmissionFeedbackRepository;
     private final ObjectMapper objectMapper;
+
+    /**
+     * @Async 메서드를 같은 빈에서 직접 호출하면 프록시를 우회해 비동기가 동작하지 않는다.
+     * 자기 자신을 별도 필드로 주입받아 호출하면 정상적으로 프록시를 거친다.
+     * @Lazy 로 순환 참조 회피.
+     */
+    @Autowired
+    @Lazy
+    private SubmissionService selfProxy;
 
     /** AI 피드백 생성 시 base64 인코딩할 첨부 최대 크기 (10MB) */
     private static final long MAX_AI_ATTACHMENT_BYTES = 10L * 1024 * 1024;
@@ -274,83 +286,119 @@ public class SubmissionService {
     }
 
     /**
-     * 강사가 학생 제출물에 대한 AI 피드백 초안을 요청.
-     * 첨부 파일이 있으면 디스크/S3 에서 읽어 base64 로 AI 서버에 함께 전달.
-     * 결과는 저장하지 않고 그대로 반환 — 강사가 검토 후 직접 댓글로 게시한다.
+     * 강사가 AI 피드백 생성을 요청 — 즉시 PENDING 캐시를 만들고 백그라운드에서 AI 호출.
+     * 호출 측은 곧바로 PENDING 상태 응답을 받고, 클라이언트가 GET 으로 polling 한다.
+     *
+     * 같은 제출물에 진행 중인 PENDING 이 있으면 그 상태를 그대로 반환 (중복 호출 방지).
      */
-    public AiFeedbackResponse requestAiFeedback(Long userId, Long submissionId) {
+    @Transactional
+    public AiFeedbackResponse startAiFeedback(Long userId, Long submissionId) {
         Submission submission = submissionRepository.findById(submissionId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.SUBMISSION_NOT_FOUND));
 
-        // 강사 권한 + 본인 강의 검증
         Course course = submission.getAssignment().getCourse();
         if (!course.getInstructor().getId().equals(userId)) {
             throw new BusinessException(ErrorCode.FORBIDDEN);
         }
 
-        String attachmentBase64 = null;
-        String attachmentName = submission.getAttachmentName();
-        if (submission.getAttachmentPath() != null) {
-            Long size = submission.getAttachmentSize();
-            if (size != null && size > MAX_AI_ATTACHMENT_BYTES) {
-                log.warn("AI 피드백 — 첨부 크기 초과로 본문 생략 size={} max={}", size, MAX_AI_ATTACHMENT_BYTES);
-            } else {
-                try {
-                    byte[] bytes = s3Service.readBytes(submission.getAttachmentPath());
-                    if (bytes.length <= MAX_AI_ATTACHMENT_BYTES) {
-                        attachmentBase64 = Base64.getEncoder().encodeToString(bytes);
-                    }
-                } catch (Exception e) {
-                    log.warn("AI 피드백 — 첨부 읽기 실패, 본문만 사용: {}", e.getMessage());
-                }
-            }
+        // 기존 캐시가 있으면:
+        //  - PENDING → 그대로 두고 그 상태 반환 (이미 진행 중)
+        //  - READY/FAILED → PENDING 으로 reset 하고 새로 생성
+        AiSubmissionFeedback cache = aiSubmissionFeedbackRepository.findBySubmissionId(submissionId)
+                .orElse(null);
+        if (cache != null && cache.getStatus() == AiSubmissionFeedback.Status.PENDING) {
+            return AiFeedbackResponse.builder()
+                    .status(AiSubmissionFeedback.Status.PENDING.name())
+                    .build();
+        }
+        if (cache == null) {
+            cache = aiSubmissionFeedbackRepository.save(
+                    AiSubmissionFeedback.builder()
+                            .submission(submission)
+                            .status(AiSubmissionFeedback.Status.PENDING)
+                            .build()
+            );
+        } else {
+            cache.resetToPending();
         }
 
-        AiAssignmentFeedbackRequest aiRequest = AiAssignmentFeedbackRequest.builder()
-                .assignmentTitle(submission.getAssignment().getTitle())
-                .assignmentDescription(submission.getAssignment().getDescription())
-                .studentName(submission.getSubmitter().getName())
-                .submissionContent(submission.getContent())
-                .attachmentName(attachmentName)
-                .attachmentBase64(attachmentBase64)
+        // 트랜잭션 커밋 후 백그라운드 호출. self-injection 으로 @Async 프록시 우회 회피
+        selfProxy.runAiFeedbackJob(submissionId);
+
+        return AiFeedbackResponse.builder()
+                .status(AiSubmissionFeedback.Status.PENDING.name())
                 .build();
-
-        AiAssignmentFeedbackResponse aiResponse = aiServerClient.generateAssignmentFeedback(aiRequest);
-
-        AiFeedbackResponse result = AiFeedbackResponse.builder()
-                .overallScore(aiResponse.getOverallScore())
-                .grade(aiResponse.getGrade())
-                .summary(aiResponse.getSummary())
-                .strengths(safeList(aiResponse.getStrengths()))
-                .improvements(safeList(aiResponse.getImprovements()))
-                .missingPoints(safeList(aiResponse.getMissingPoints()))
-                .suggestions(safeList(aiResponse.getSuggestions()))
-                .instructorDraft(aiResponse.getInstructorDraft() != null ? aiResponse.getInstructorDraft() : "")
-                .build();
-
-        // 강사 전용 캐시 upsert — 학생에게는 절대 노출되지 않는다
-        try {
-            String json = objectMapper.writeValueAsString(result);
-            aiSubmissionFeedbackRepository.findBySubmissionId(submissionId)
-                    .ifPresentOrElse(
-                            existing -> existing.updatePayload(json),
-                            () -> aiSubmissionFeedbackRepository.save(
-                                    AiSubmissionFeedback.builder()
-                                            .submission(submission)
-                                            .payloadJson(json)
-                                            .build()
-                            )
-                    );
-        } catch (JsonProcessingException e) {
-            log.warn("AI 피드백 캐시 직렬화 실패 (저장 스킵) submissionId={}: {}", submissionId, e.getMessage());
-        }
-
-        return result;
     }
 
     /**
-     * 강사가 같은 제출물에 대해 이전에 생성한 AI 피드백 캐시를 조회.
-     * 없으면 null 반환. 학생/타인은 절대 호출 불가 — 강사 본인 강의만 허용.
+     * 백그라운드 AI 피드백 작업. self-injection 을 통해 호출되어야 @Async 가 동작.
+     * 별도 트랜잭션을 새로 열어 결과를 캐시에 upsert.
+     */
+    @Async
+    @Transactional
+    public void runAiFeedbackJob(Long submissionId) {
+        try {
+            Submission submission = submissionRepository.findById(submissionId).orElse(null);
+            if (submission == null) {
+                log.warn("[AI feedback job] submission 없음 id={}", submissionId);
+                return;
+            }
+
+            String attachmentBase64 = null;
+            String attachmentName = submission.getAttachmentName();
+            if (submission.getAttachmentPath() != null) {
+                Long size = submission.getAttachmentSize();
+                if (size != null && size > MAX_AI_ATTACHMENT_BYTES) {
+                    log.warn("[AI feedback job] 첨부 크기 초과로 본문 생략 size={} max={}", size, MAX_AI_ATTACHMENT_BYTES);
+                } else {
+                    try {
+                        byte[] bytes = s3Service.readBytes(submission.getAttachmentPath());
+                        if (bytes.length <= MAX_AI_ATTACHMENT_BYTES) {
+                            attachmentBase64 = Base64.getEncoder().encodeToString(bytes);
+                        }
+                    } catch (Exception e) {
+                        log.warn("[AI feedback job] 첨부 읽기 실패, 본문만 사용: {}", e.getMessage());
+                    }
+                }
+            }
+
+            AiAssignmentFeedbackRequest aiRequest = AiAssignmentFeedbackRequest.builder()
+                    .assignmentTitle(submission.getAssignment().getTitle())
+                    .assignmentDescription(submission.getAssignment().getDescription())
+                    .studentName(submission.getSubmitter().getName())
+                    .submissionContent(submission.getContent())
+                    .attachmentName(attachmentName)
+                    .attachmentBase64(attachmentBase64)
+                    .build();
+
+            AiAssignmentFeedbackResponse aiResponse = aiServerClient.generateAssignmentFeedback(aiRequest);
+
+            AiFeedbackResponse result = AiFeedbackResponse.builder()
+                    .status(AiSubmissionFeedback.Status.READY.name())
+                    .overallScore(aiResponse.getOverallScore())
+                    .grade(aiResponse.getGrade())
+                    .summary(aiResponse.getSummary())
+                    .strengths(safeList(aiResponse.getStrengths()))
+                    .improvements(safeList(aiResponse.getImprovements()))
+                    .missingPoints(safeList(aiResponse.getMissingPoints()))
+                    .suggestions(safeList(aiResponse.getSuggestions()))
+                    .instructorDraft(aiResponse.getInstructorDraft() != null ? aiResponse.getInstructorDraft() : "")
+                    .build();
+
+            String json = objectMapper.writeValueAsString(result);
+            aiSubmissionFeedbackRepository.findBySubmissionId(submissionId)
+                    .ifPresent(c -> c.markReady(json));
+            log.info("[AI feedback job] 완료 submissionId={}", submissionId);
+        } catch (Exception e) {
+            log.error("[AI feedback job] 실패 submissionId={}: {}", submissionId, e.getMessage());
+            aiSubmissionFeedbackRepository.findBySubmissionId(submissionId)
+                    .ifPresent(c -> c.markFailed(e.getMessage() != null ? e.getMessage() : "AI 호출 실패"));
+        }
+    }
+
+    /**
+     * 강사용 — 캐시된 AI 피드백 조회.
+     * 응답 안의 status 필드로 PENDING / READY / FAILED 구분. 없으면 null.
      */
     public AiFeedbackResponse getCachedAiFeedback(Long userId, Long submissionId) {
         Submission submission = submissionRepository.findById(submissionId)
@@ -362,8 +410,31 @@ public class SubmissionService {
 
         return aiSubmissionFeedbackRepository.findBySubmissionId(submissionId)
                 .map(cache -> {
+                    if (cache.getStatus() == AiSubmissionFeedback.Status.PENDING) {
+                        return AiFeedbackResponse.builder()
+                                .status(AiSubmissionFeedback.Status.PENDING.name())
+                                .build();
+                    }
+                    if (cache.getStatus() == AiSubmissionFeedback.Status.FAILED) {
+                        return AiFeedbackResponse.builder()
+                                .status(AiSubmissionFeedback.Status.FAILED.name())
+                                .errorMessage(cache.getPayloadJson())
+                                .build();
+                    }
+                    // READY
                     try {
-                        return objectMapper.readValue(cache.getPayloadJson(), AiFeedbackResponse.class);
+                        AiFeedbackResponse parsed = objectMapper.readValue(cache.getPayloadJson(), AiFeedbackResponse.class);
+                        return AiFeedbackResponse.builder()
+                                .status(AiSubmissionFeedback.Status.READY.name())
+                                .overallScore(parsed.getOverallScore())
+                                .grade(parsed.getGrade())
+                                .summary(parsed.getSummary())
+                                .strengths(parsed.getStrengths())
+                                .improvements(parsed.getImprovements())
+                                .missingPoints(parsed.getMissingPoints())
+                                .suggestions(parsed.getSuggestions())
+                                .instructorDraft(parsed.getInstructorDraft())
+                                .build();
                     } catch (JsonProcessingException e) {
                         log.warn("AI 피드백 캐시 역직렬화 실패 submissionId={}: {}", submissionId, e.getMessage());
                         return null;
