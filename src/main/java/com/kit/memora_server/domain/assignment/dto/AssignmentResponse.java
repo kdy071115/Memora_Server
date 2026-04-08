@@ -23,12 +23,21 @@ public class AssignmentResponse {
     private String description;
     private LocalDateTime dueDate;
     private boolean allowTeamSubmission;
+
+    /** 강사가 dueDate 도래 전에 수동 조기 마감했는지 */
+    private boolean closedEarly;
+
+    /** dueDate 또는 closedEarly 가 발동되어 학생 제출이 막혔는지 — 프론트의 잠금 판단용 */
+    private boolean closed;
+
     private long submissionCount;
     private boolean mySubmissionExists;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
     public static AssignmentResponse from(Assignment a, long submissionCount, boolean mySubmissionExists) {
+        boolean dueOver = a.getDueDate() != null && LocalDateTime.now().isAfter(a.getDueDate());
+        boolean closed = a.isClosedEarly() || dueOver;
         return AssignmentResponse.builder()
                 .id(a.getId())
                 .courseId(a.getCourse() != null ? a.getCourse().getId() : null)
@@ -39,6 +48,8 @@ public class AssignmentResponse {
                 .description(a.getDescription())
                 .dueDate(a.getDueDate())
                 .allowTeamSubmission(a.isAllowTeamSubmission())
+                .closedEarly(a.isClosedEarly())
+                .closed(closed)
                 .submissionCount(submissionCount)
                 .mySubmissionExists(mySubmissionExists)
                 .createdAt(a.getCreatedAt())

@@ -37,10 +37,27 @@ public class Assignment extends BaseEntity {
     @Builder.Default
     private boolean allowTeamSubmission = false;
 
+    /**
+     * 강사가 dueDate 도래 전에 수동으로 조기 마감했는지.
+     * true 가 되면 dueDate 와 무관하게 학생 제출/수정이 막힌다.
+     * 강사가 다시 false 로 되돌릴 수 있다.
+     */
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean closedEarly = false;
+
     public void update(String title, String description, LocalDateTime dueDate, Boolean allowTeamSubmission) {
         if (title != null && !title.isBlank()) this.title = title;
         if (description != null) this.description = description;
         this.dueDate = dueDate;
         if (allowTeamSubmission != null) this.allowTeamSubmission = allowTeamSubmission;
+    }
+
+    public void closeEarly() {
+        this.closedEarly = true;
+    }
+
+    public void reopen() {
+        this.closedEarly = false;
     }
 }

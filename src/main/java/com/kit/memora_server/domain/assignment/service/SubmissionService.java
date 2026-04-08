@@ -233,8 +233,13 @@ public class SubmissionService {
 
     // ── Helpers ──
 
-    /** 마감일이 지났는지. dueDate 가 null 이면 마감 없음 (= false). */
+    /**
+     * 학생 입장에서 "마감"인지.
+     *  - 강사가 조기 마감(closedEarly) 했거나
+     *  - dueDate 가 지났거나
+     */
     private boolean isOverdue(Assignment assignment) {
+        if (assignment.isClosedEarly()) return true;
         LocalDateTime due = assignment.getDueDate();
         return due != null && LocalDateTime.now().isAfter(due);
     }
