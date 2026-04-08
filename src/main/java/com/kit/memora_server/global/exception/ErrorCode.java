@@ -25,12 +25,22 @@ public enum ErrorCode {
     NOTICE_NOT_FOUND(HttpStatus.NOT_FOUND, "NOTICE_NOT_FOUND", "공지사항을 찾을 수 없습니다."),
     FEEDBACK_NOT_FOUND(HttpStatus.NOT_FOUND, "FEEDBACK_NOT_FOUND", "피드백을 찾을 수 없습니다."),
     INVALID_INVITE_CODE(HttpStatus.NOT_FOUND, "INVALID_INVITE_CODE", "유효하지 않은 초대 코드입니다."),
+    ASSIGNMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "ASSIGNMENT_NOT_FOUND", "과제를 찾을 수 없습니다."),
+    SUBMISSION_NOT_FOUND(HttpStatus.NOT_FOUND, "SUBMISSION_NOT_FOUND", "제출물을 찾을 수 없습니다."),
+    COMMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "COMMENT_NOT_FOUND", "댓글을 찾을 수 없습니다."),
+    TEAM_NOT_FOUND(HttpStatus.NOT_FOUND, "TEAM_NOT_FOUND", "팀을 찾을 수 없습니다."),
+    INVITATION_NOT_FOUND(HttpStatus.NOT_FOUND, "INVITATION_NOT_FOUND", "초대장을 찾을 수 없습니다."),
 
     // Business
     NOT_ENROLLED(HttpStatus.FORBIDDEN, "NOT_ENROLLED", "수강 등록이 필요합니다."),
     ALREADY_ENROLLED(HttpStatus.CONFLICT, "ALREADY_ENROLLED", "이미 수강 등록되었습니다."),
     DOCUMENT_PROCESSING(HttpStatus.ACCEPTED, "DOCUMENT_PROCESSING", "문서가 아직 처리 중입니다."),
     QUIZ_HAS_ATTEMPTS(HttpStatus.CONFLICT, "QUIZ_HAS_ATTEMPTS", "이미 학생 풀이 기록이 있어 삭제할 수 없습니다."),
+    ALREADY_TEAM_MEMBER(HttpStatus.CONFLICT, "ALREADY_TEAM_MEMBER", "이미 팀에 소속되어 있습니다."),
+    ALREADY_INVITED(HttpStatus.CONFLICT, "ALREADY_INVITED", "이미 초대된 사용자입니다."),
+    NOT_TEAM_MEMBER(HttpStatus.FORBIDDEN, "NOT_TEAM_MEMBER", "해당 팀의 멤버가 아닙니다."),
+    INVITATION_ALREADY_HANDLED(HttpStatus.CONFLICT, "INVITATION_ALREADY_HANDLED", "이미 처리된 초대장입니다."),
+    SUBMISSION_FORBIDDEN(HttpStatus.FORBIDDEN, "SUBMISSION_FORBIDDEN", "제출물을 볼 권한이 없습니다."),
 
     // External
     AI_SERVER_ERROR(HttpStatus.SERVICE_UNAVAILABLE, "AI_SERVER_ERROR", "AI 서버 연결에 실패했습니다."),

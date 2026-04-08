@@ -1,8 +1,11 @@
 package com.kit.memora_server.domain.course.controller;
 
+import com.kit.memora_server.domain.course.dto.CourseMemberDto;
 import com.kit.memora_server.domain.course.dto.CourseRequest;
 import com.kit.memora_server.domain.course.dto.CourseResponse;
 import com.kit.memora_server.domain.course.dto.EnrollByCodeRequest;
+
+import java.util.List;
 import com.kit.memora_server.domain.course.service.CourseService;
 import com.kit.memora_server.global.common.ApiResponse;
 import com.kit.memora_server.global.common.PageResponse;
@@ -93,6 +96,15 @@ public class CourseController {
             @Valid @RequestBody EnrollByCodeRequest request) {
         CourseResponse response = courseService.enrollByCode(request.getInviteCode(), user.getId());
         return ResponseEntity.ok(ApiResponse.ok("수강 등록되었습니다.", response));
+    }
+
+    @Operation(summary = "강의 수강생 목록 (간단 정보)",
+            description = "팀 초대 후보 등으로 사용. 강사 또는 수강 중인 학생만 조회 가능.")
+    @GetMapping("/{courseId}/members")
+    public ResponseEntity<ApiResponse<List<CourseMemberDto>>> getMembers(
+            @PathVariable Long courseId,
+            @AuthenticationPrincipal CustomUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.ok(courseService.getMembers(courseId, user.getId())));
     }
 
     @Operation(summary = "초대 코드 재발급")

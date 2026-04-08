@@ -1,11 +1,21 @@
 package com.kit.memora_server.domain.course.service;
 
+import com.kit.memora_server.domain.assignment.entity.Assignment;
+import com.kit.memora_server.domain.assignment.entity.Submission;
+import com.kit.memora_server.domain.assignment.repository.AssignmentRepository;
+import com.kit.memora_server.domain.assignment.repository.SubmissionCommentRepository;
+import com.kit.memora_server.domain.assignment.repository.SubmissionRepository;
+import com.kit.memora_server.domain.course.dto.CourseMemberDto;
 import com.kit.memora_server.domain.course.dto.CourseRequest;
 import com.kit.memora_server.domain.course.dto.CourseResponse;
 import com.kit.memora_server.domain.course.entity.Course;
 import com.kit.memora_server.domain.course.entity.Enrollment;
 import com.kit.memora_server.domain.course.repository.CourseRepository;
 import com.kit.memora_server.domain.course.repository.EnrollmentRepository;
+import com.kit.memora_server.domain.team.entity.Team;
+import com.kit.memora_server.domain.team.repository.TeamInvitationRepository;
+import com.kit.memora_server.domain.team.repository.TeamMemberRepository;
+import com.kit.memora_server.domain.team.repository.TeamRepository;
 import com.kit.memora_server.domain.document.entity.Document;
 import com.kit.memora_server.domain.document.repository.DocumentChunkRepository;
 import com.kit.memora_server.domain.document.repository.DocumentRepository;
@@ -48,6 +58,12 @@ public class CourseService {
 
     private final CourseRepository courseRepository;
     private final EnrollmentRepository enrollmentRepository;
+    private final AssignmentRepository assignmentRepository;
+    private final SubmissionRepository submissionRepository;
+    private final SubmissionCommentRepository submissionCommentRepository;
+    private final TeamRepository teamRepository;
+    private final TeamMemberRepository teamMemberRepository;
+    private final TeamInvitationRepository teamInvitationRepository;
     private final LectureRepository lectureRepository;
     private final UserRepository userRepository;
     private final NoticeRepository noticeRepository;
@@ -199,12 +215,51 @@ public class CourseService {
         // 2. 차시 자체
         lectureRepository.deleteAll(lectures);
 
-        // 3. 강의 직속 자료
+        // 3. 과제 + 제출물 + 댓글 cascade
+        List<Assignment> assignments = assignmentRepository.findByCourseIdOrderByCreatedAtDesc(courseId);
+        for (Assignment assignment : assignments) {
+            List<Submission> submissions = submissionRepository.findByAssignmentIdOrderByCreatedAtDesc(assignment.getId());
+            for (Submission submission : submissions) {
+                submissionCommentRepository.deleteBySubmissionId(submission.getId());
+            }
+            submissionRepository.deleteByAssignmentId(assignment.getId());
+        }
+        assignmentRepository.deleteAll(assignments);
+
+        // 4. 팀 + 멤버 + 초대장 cascade
+        List<Team> teams = teamRepository.findByCourseIdOrderByCreatedAtDesc(courseId);
+        for (Team team : teams) {
+            teamInvitationRepository.deleteByTeamId(team.getId());
+            teamMemberRepository.deleteByTeamId(team.getId());
+        }
+        teamRepository.deleteAll(teams);
+
+        // 5. 강의 직속 자료
         noticeRepository.deleteAll(noticeRepository.findByCourseIdOrderByPinnedDescCreatedAtDesc(courseId));
         enrollmentRepository.deleteAll(enrollmentRepository.findByCourseId(courseId));
 
-        // 4. 강의
+        // 6. 강의
         courseRepository.delete(course);
+    }
+
+    /**
+     * 강의의 수강생 목록 (간단 정보) — 팀 초대 등에 사용.
+     * 강사는 항상 볼 수 있고, 학생은 본인이 수강 중인 강의여야 한다.
+     */
+    public List<CourseMemberDto> getMembers(Long courseId, Long userId) {
+        Course course = courseRepository.findById(courseId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.COURSE_NOT_FOUND));
+        boolean isInstructor = course.getInstructor().getId().equals(userId);
+        if (!isInstructor && !enrollmentRepository.existsByUserIdAndCourseId(userId, courseId)) {
+            throw new BusinessException(ErrorCode.NOT_ENROLLED);
+        }
+        return enrollmentRepository.findWithUserByCourseId(courseId).stream()
+                .map(e -> CourseMemberDto.builder()
+                        .userId(e.getUser().getId())
+                        .name(e.getUser().getName())
+                        .email(e.getUser().getEmail())
+                        .build())
+                .toList();
     }
 
     @Transactional
