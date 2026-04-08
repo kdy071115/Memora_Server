@@ -12,6 +12,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
+
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -29,8 +31,10 @@ public class NotificationService {
                 .findByInviteeIdAndStatusOrderByCreatedAtDesc(userId, InvitationStatus.PENDING)
                 .size();
 
-        long unseenFeedback = submissionCommentRepository
-                .countUnseenForUser(userId, user.getFeedbackSeenAt());
+        LocalDateTime since = user.getFeedbackSeenAt();
+        long unseenFeedback = (since == null)
+                ? submissionCommentRepository.countAllUnseenForUser(userId)
+                : submissionCommentRepository.countUnseenForUserSince(userId, since);
 
         return NotificationCountResponse.builder()
                 .teamInvitations(invitations)

@@ -13,15 +13,19 @@ public interface SubmissionCommentRepository extends JpaRepository<SubmissionCom
     void deleteBySubmissionId(Long submissionId);
 
     /**
-     * 학생이 받은 미확인 피드백 댓글 수를 센다.
-     *  - 학생이 본인 제출물(submitter = userId)에 달린 댓글 중
-     *  - 작성자가 본인이 아닌 것 (강사 또는 다른 사람)
-     *  - 마지막 확인 시각(since) 이후에 작성된 것
-     * since 가 null 이면 모든 시간 범위를 포함.
+     * 학생이 받은 미확인 피드백 댓글 수를 센다 — since 시점 이후에 작성된 것만.
+     * (PostgreSQL 이 `:since IS NULL` 표현의 파라미터 타입을 추론하지 못해
+     *  since=null 케이스는 별도 메서드로 분리.)
      */
     @Query("SELECT COUNT(c) FROM SubmissionComment c " +
            "WHERE c.submission.submitter.id = :userId " +
            "AND c.author.id <> :userId " +
-           "AND (:since IS NULL OR c.createdAt > :since)")
-    long countUnseenForUser(@Param("userId") Long userId, @Param("since") LocalDateTime since);
+           "AND c.createdAt > :since")
+    long countUnseenForUserSince(@Param("userId") Long userId, @Param("since") LocalDateTime since);
+
+    /** 마지막 확인 시각이 없는 경우 — 본인 제출물에 달린 모든 타인 댓글 카운트. */
+    @Query("SELECT COUNT(c) FROM SubmissionComment c " +
+           "WHERE c.submission.submitter.id = :userId " +
+           "AND c.author.id <> :userId")
+    long countAllUnseenForUser(@Param("userId") Long userId);
 }
