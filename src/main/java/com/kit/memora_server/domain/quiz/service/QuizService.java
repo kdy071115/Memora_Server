@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kit.memora_server.domain.lecture.entity.Lecture;
 import com.kit.memora_server.domain.lecture.repository.LectureRepository;
+import com.kit.memora_server.domain.quiz.dto.QuizAttemptHistoryItem;
 import com.kit.memora_server.domain.quiz.dto.QuizAttemptResponse;
 import com.kit.memora_server.domain.quiz.dto.QuizCreateRequest;
 import com.kit.memora_server.domain.quiz.dto.QuizDetailResponse;
@@ -150,6 +151,15 @@ public class QuizService {
         List<QuizAttempt> attempts = quizAttemptRepository
                 .findByUserIdAndQuiz_LectureIdOrderByAttemptedAtDesc(userId, lectureId);
         return attempts.stream().map(QuizAttemptResponse::from).toList();
+    }
+
+    /**
+     * 학생용 안전한 풀이 기록 — 점수/일시만 노출, 정답·해설은 제외.
+     */
+    public List<QuizAttemptHistoryItem> getMyAttemptHistory(Long userId, Long lectureId) {
+        List<QuizAttempt> attempts = quizAttemptRepository
+                .findByUserIdAndQuiz_LectureIdOrderByAttemptedAtDesc(userId, lectureId);
+        return attempts.stream().map(QuizAttemptHistoryItem::from).toList();
     }
 
     @Transactional

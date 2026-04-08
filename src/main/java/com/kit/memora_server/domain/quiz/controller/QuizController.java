@@ -1,5 +1,6 @@
 package com.kit.memora_server.domain.quiz.controller;
 
+import com.kit.memora_server.domain.quiz.dto.QuizAttemptHistoryItem;
 import com.kit.memora_server.domain.quiz.dto.QuizAttemptResponse;
 import com.kit.memora_server.domain.quiz.dto.QuizCreateRequest;
 import com.kit.memora_server.domain.quiz.dto.QuizDetailResponse;
@@ -100,11 +101,20 @@ public class QuizController {
         return ResponseEntity.ok(ApiResponse.ok(quizService.submit(quizId, user.getId(), request)));
     }
 
-    @Operation(summary = "내 풀이 기록")
+    @Operation(summary = "내 풀이 기록 (정답·해설 포함)")
     @GetMapping("/api/lectures/{lectureId}/quizzes/attempts")
     public ResponseEntity<ApiResponse<List<QuizAttemptResponse>>> getMyAttempts(
             @PathVariable Long lectureId,
             @AuthenticationPrincipal CustomUserDetails user) {
         return ResponseEntity.ok(ApiResponse.ok(quizService.getMyAttempts(user.getId(), lectureId)));
+    }
+
+    @Operation(summary = "내 풀이 점수 기록 (정답·해설 미포함)",
+            description = "학생이 자신의 풀이 기록을 점수/일시 형태로만 확인합니다. 정답을 외우지 않도록 의도적으로 답안·해설을 제외합니다.")
+    @GetMapping("/api/lectures/{lectureId}/quizzes/history")
+    public ResponseEntity<ApiResponse<List<QuizAttemptHistoryItem>>> getMyAttemptHistory(
+            @PathVariable Long lectureId,
+            @AuthenticationPrincipal CustomUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.ok(quizService.getMyAttemptHistory(user.getId(), lectureId)));
     }
 }
