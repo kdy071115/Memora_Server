@@ -2,6 +2,7 @@ package com.kit.memora_server.domain.course.service;
 
 import com.kit.memora_server.domain.assignment.entity.Assignment;
 import com.kit.memora_server.domain.assignment.entity.Submission;
+import com.kit.memora_server.domain.assignment.repository.AiSubmissionFeedbackRepository;
 import com.kit.memora_server.domain.assignment.repository.AssignmentRepository;
 import com.kit.memora_server.domain.assignment.repository.SubmissionCommentRepository;
 import com.kit.memora_server.domain.assignment.repository.SubmissionRepository;
@@ -61,6 +62,7 @@ public class CourseService {
     private final AssignmentRepository assignmentRepository;
     private final SubmissionRepository submissionRepository;
     private final SubmissionCommentRepository submissionCommentRepository;
+    private final AiSubmissionFeedbackRepository aiSubmissionFeedbackRepository;
     private final TeamRepository teamRepository;
     private final TeamMemberRepository teamMemberRepository;
     private final TeamInvitationRepository teamInvitationRepository;
@@ -215,11 +217,12 @@ public class CourseService {
         // 2. 차시 자체
         lectureRepository.deleteAll(lectures);
 
-        // 3. 과제 + 제출물 + 댓글 cascade
+        // 3. 과제 + 제출물 + 댓글 + AI 캐시 cascade
         List<Assignment> assignments = assignmentRepository.findByCourseIdOrderByCreatedAtDesc(courseId);
         for (Assignment assignment : assignments) {
             List<Submission> submissions = submissionRepository.findByAssignmentIdOrderByCreatedAtDesc(assignment.getId());
             for (Submission submission : submissions) {
+                aiSubmissionFeedbackRepository.deleteBySubmissionId(submission.getId());
                 submissionCommentRepository.deleteBySubmissionId(submission.getId());
             }
             submissionRepository.deleteByAssignmentId(assignment.getId());

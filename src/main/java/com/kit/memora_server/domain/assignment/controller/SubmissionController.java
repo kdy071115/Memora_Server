@@ -1,6 +1,7 @@
 package com.kit.memora_server.domain.assignment.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.kit.memora_server.domain.assignment.dto.AiFeedbackResponse;
 import com.kit.memora_server.domain.assignment.dto.SubmissionCommentRequest;
 import com.kit.memora_server.domain.assignment.dto.SubmissionCommentResponse;
 import com.kit.memora_server.domain.assignment.dto.SubmissionRequest;
@@ -139,6 +140,27 @@ public class SubmissionController {
     }
 
     // ── Comments ──
+
+    @Operation(summary = "강사용 — 제출물 AI 피드백 초안 생성",
+            description = "학생 제출물(글 + 첨부 PDF/텍스트)을 과제 주제와 비교해 AI 가 강사용 피드백 초안을 만들어줍니다. 결과는 강사 전용 캐시에 저장되어 다음에 다시 열어볼 수 있으며, 학생에게는 절대 노출되지 않습니다.")
+    @PostMapping("/api/submissions/{submissionId}/ai-feedback")
+    @PreAuthorize("hasRole('INSTRUCTOR')")
+    public ResponseEntity<ApiResponse<AiFeedbackResponse>> aiFeedback(
+            @PathVariable Long submissionId,
+            @AuthenticationPrincipal CustomUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.ok("AI 피드백 초안을 생성했습니다.",
+                submissionService.requestAiFeedback(user.getId(), submissionId)));
+    }
+
+    @Operation(summary = "강사용 — 캐시된 AI 피드백 조회",
+            description = "강사가 이전에 생성한 AI 피드백 초안 캐시를 반환합니다. 없으면 data 가 null 입니다. 학생/타인은 호출할 수 없습니다.")
+    @GetMapping("/api/submissions/{submissionId}/ai-feedback")
+    @PreAuthorize("hasRole('INSTRUCTOR')")
+    public ResponseEntity<ApiResponse<AiFeedbackResponse>> getCachedAiFeedback(
+            @PathVariable Long submissionId,
+            @AuthenticationPrincipal CustomUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.ok(submissionService.getCachedAiFeedback(user.getId(), submissionId)));
+    }
 
     @Operation(summary = "제출물에 댓글 작성 (강사 또는 본인)")
     @PostMapping("/api/submissions/{submissionId}/comments")
