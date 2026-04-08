@@ -4,6 +4,7 @@ import com.kit.memora_server.domain.analysis.dto.CourseOverviewResponse;
 import com.kit.memora_server.domain.analysis.dto.CourseStudentDetailResponse;
 import com.kit.memora_server.domain.analysis.dto.CourseStudentSummary;
 import com.kit.memora_server.domain.analysis.dto.MyAnalysisResponse;
+import com.kit.memora_server.domain.analysis.dto.StudentDashboardSummary;
 import com.kit.memora_server.domain.analysis.service.AnalysisService;
 import com.kit.memora_server.global.common.ApiResponse;
 import com.kit.memora_server.global.security.CustomUserDetails;
@@ -32,6 +33,14 @@ public class AnalysisController {
     public ResponseEntity<ApiResponse<MyAnalysisResponse>> getMyAnalysis(
             @AuthenticationPrincipal CustomUserDetails user) {
         return ResponseEntity.ok(ApiResponse.ok(analysisService.getMyAnalysis(user.getId())));
+    }
+
+    @Operation(summary = "학생 대시보드 요약 (이번 주 학습 시간 / 평균 점수 / 미제출 과제 등)",
+            description = "AI 호출 없이 가벼운 통계만 반환. 대시보드 상단 카드용.")
+    @GetMapping("/api/analysis/me/dashboard-summary")
+    public ResponseEntity<ApiResponse<StudentDashboardSummary>> getDashboardSummary(
+            @AuthenticationPrincipal CustomUserDetails user) {
+        return ResponseEntity.ok(ApiResponse.ok(analysisService.getDashboardSummary(user.getId())));
     }
 
     @Operation(summary = "강의 분석 대시보드 (교직자)")

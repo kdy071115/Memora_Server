@@ -4,7 +4,11 @@ import com.kit.memora_server.domain.analysis.dto.CourseOverviewResponse;
 import com.kit.memora_server.domain.analysis.dto.CourseStudentDetailResponse;
 import com.kit.memora_server.domain.analysis.dto.CourseStudentSummary;
 import com.kit.memora_server.domain.analysis.dto.MyAnalysisResponse;
+import com.kit.memora_server.domain.analysis.dto.StudentDashboardSummary;
 import com.kit.memora_server.domain.analysis.dto.StudentDistributionDto;
+import com.kit.memora_server.domain.assignment.repository.AssignmentRepository;
+import com.kit.memora_server.domain.assignment.repository.SubmissionRepository;
+import com.kit.memora_server.domain.assignment.entity.Assignment;
 import com.kit.memora_server.domain.analysis.dto.WeakConceptDto;
 import com.kit.memora_server.domain.analysis.dto.WeeklyProgressDto;
 import com.kit.memora_server.domain.analysis.entity.LearningLog;
@@ -26,6 +30,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.DayOfWeek;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.IsoFields;
 import java.util.ArrayList;
@@ -60,7 +66,56 @@ public class AnalysisService {
     private final LearningLogRepository learningLogRepository;
     private final EnrollmentRepository enrollmentRepository;
     private final CourseRepository courseRepository;
+    private final AssignmentRepository assignmentRepository;
+    private final SubmissionRepository submissionRepository;
     private final AiServerClient aiServerClient;
+
+    /**
+     * 학생 대시보드 상단 요약 카드용 — AI 호출 없이 가벼운 통계만.
+     */
+    public StudentDashboardSummary getDashboardSummary(Long userId) {
+        // 이번 주 (월요일 00:00) 부터의 학습 시간
+        LocalDate today = LocalDate.now();
+        LocalDate monday = today.with(DayOfWeek.MONDAY);
+        LocalDateTime since = monday.atStartOfDay();
+        long thisWeek = learningLogRepository.sumDurationByUserIdSince(userId, since);
+
+        long total = learningLogRepository.sumDurationByUserId(userId);
+
+        // 평균 점수 + 정답률
+        List<QuizAttempt> attempts = quizAttemptRepository.findByUserIdOrderByAttemptedAtDesc(userId);
+        int avgScore = (int) attempts.stream()
+                .mapToInt(a -> a.getScore() == null ? 0 : a.getScore())
+                .average()
+                .orElse(0.0);
+        int correctRate = attempts.isEmpty() ? 0 : (int) Math.round(
+                attempts.stream().filter(a -> Boolean.TRUE.equals(a.getIsCorrect())).count() * 100.0
+                        / attempts.size()
+        );
+
+        // 미제출 + 마감 미래인 과제 수
+        List<Course> activeCourses = enrollmentRepository.findByUserId(userId).stream()
+                .map(Enrollment::getCourse)
+                .filter(c -> c != null && "ACTIVE".equals(c.getStatus()))
+                .toList();
+        long pending = 0;
+        if (!activeCourses.isEmpty()) {
+            List<Assignment> upcoming = assignmentRepository.findUpcomingByCourses(activeCourses, LocalDateTime.now());
+            for (Assignment a : upcoming) {
+                boolean mine = submissionRepository.findByAssignmentIdOrderByCreatedAtDesc(a.getId())
+                        .stream().anyMatch(s -> s.getSubmitter().getId().equals(userId));
+                if (!mine) pending++;
+            }
+        }
+
+        return StudentDashboardSummary.builder()
+                .thisWeekStudyTime(thisWeek)
+                .totalStudyTime(total)
+                .pendingAssignments(pending)
+                .averageScore(avgScore)
+                .overallCorrectRate(correctRate)
+                .build();
+    }
 
     public MyAnalysisResponse getMyAnalysis(Long userId) {
         List<QuizAttempt> attempts = quizAttemptRepository.findByUserIdOrderByAttemptedAtDesc(userId);

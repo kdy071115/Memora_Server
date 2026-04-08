@@ -21,6 +21,9 @@ public interface LearningLogRepository extends JpaRepository<LearningLog, Long> 
     @Query("SELECT COALESCE(SUM(l.duration), 0) FROM LearningLog l WHERE l.user.id = :userId")
     long sumDurationByUserId(@Param("userId") Long userId);
 
+    @Query("SELECT COALESCE(SUM(l.duration), 0) FROM LearningLog l WHERE l.user.id = :userId AND l.createdAt >= :since")
+    long sumDurationByUserIdSince(@Param("userId") Long userId, @Param("since") LocalDateTime since);
+
     @Query("SELECT COALESCE(SUM(l.duration), 0) FROM LearningLog l WHERE l.user.id = :userId AND l.lecture.course.id = :courseId")
     long sumDurationByUserIdAndCourseId(@Param("userId") Long userId, @Param("courseId") Long courseId);
 
