@@ -9,7 +9,10 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.core.ResponseBytes;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 import java.io.IOException;
@@ -95,6 +98,36 @@ public class S3Service {
             return target.toString();
         } catch (IOException e) {
             log.error("로컬 파일 저장 실패: {}", e.getMessage());
+            throw new BusinessException(ErrorCode.FILE_UPLOAD_ERROR);
+        }
+    }
+
+    /**
+     * 저장된 파일을 바이트로 다시 읽는다.
+     *  - S3 모드: storedKey 는 S3 key
+     *  - 로컬 모드: storedKey 는 절대경로
+     * 둘 다 자동 감지해서 처리한다.
+     */
+    public byte[] readBytes(String storedKey) {
+        if (storedKey == null || storedKey.isBlank()) {
+            throw new BusinessException(ErrorCode.DOCUMENT_NOT_FOUND);
+        }
+        // 로컬 절대경로(/...) 형태이거나 S3 가 비활성이면 디스크에서 읽기
+        if (!useS3 || storedKey.startsWith("/")) {
+            try {
+                return Files.readAllBytes(Paths.get(storedKey));
+            } catch (IOException e) {
+                log.error("로컬 파일 읽기 실패: {} ({})", storedKey, e.getMessage());
+                throw new BusinessException(ErrorCode.FILE_UPLOAD_ERROR);
+            }
+        }
+        // S3 모드
+        try {
+            GetObjectRequest req = GetObjectRequest.builder().bucket(bucket).key(storedKey).build();
+            ResponseBytes<GetObjectResponse> bytes = s3Client.getObjectAsBytes(req);
+            return bytes.asByteArray();
+        } catch (Exception e) {
+            log.error("S3 파일 읽기 실패: {} ({})", storedKey, e.getMessage());
             throw new BusinessException(ErrorCode.FILE_UPLOAD_ERROR);
         }
     }

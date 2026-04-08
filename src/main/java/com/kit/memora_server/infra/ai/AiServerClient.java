@@ -11,6 +11,8 @@ import com.kit.memora_server.infra.ai.dto.AiQuizGenerateRequest;
 import com.kit.memora_server.infra.ai.dto.AiQuizGenerateResponse;
 import com.kit.memora_server.infra.ai.dto.AiQuizGradeRequest;
 import com.kit.memora_server.infra.ai.dto.AiQuizGradeResponse;
+import com.kit.memora_server.infra.ai.dto.AiAssignmentFeedbackRequest;
+import com.kit.memora_server.infra.ai.dto.AiAssignmentFeedbackResponse;
 import com.kit.memora_server.infra.ai.dto.AiSelfExplainRequest;
 import com.kit.memora_server.infra.ai.dto.AiSelfExplainResponse;
 import lombok.RequiredArgsConstructor;
@@ -100,6 +102,23 @@ public class AiServerClient {
             throw new BusinessException(ErrorCode.AI_SERVER_ERROR);
         } catch (Exception e) {
             log.error("AI 서버 자기 설명 평가 실패: {}", e.getMessage());
+            throw new BusinessException(ErrorCode.AI_SERVER_ERROR);
+        }
+    }
+
+    public AiAssignmentFeedbackResponse generateAssignmentFeedback(AiAssignmentFeedbackRequest request) {
+        try {
+            return aiWebClient.post()
+                    .uri("/ai/assignment-feedback")
+                    .bodyValue(request)
+                    .retrieve()
+                    .bodyToMono(AiAssignmentFeedbackResponse.class)
+                    .block();
+        } catch (WebClientResponseException e) {
+            log.error("AI 서버 과제 피드백 실패: status={}, body={}", e.getStatusCode(), e.getResponseBodyAsString());
+            throw new BusinessException(ErrorCode.AI_SERVER_ERROR);
+        } catch (Exception e) {
+            log.error("AI 서버 과제 피드백 실패: {}", e.getMessage());
             throw new BusinessException(ErrorCode.AI_SERVER_ERROR);
         }
     }
