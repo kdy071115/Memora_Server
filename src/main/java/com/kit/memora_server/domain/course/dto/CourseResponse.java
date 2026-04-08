@@ -42,6 +42,12 @@ public class CourseResponse {
     @JsonProperty("isEnrolled")
     private boolean isEnrolled;
 
+    @Schema(description = "현재 학생의 진도율 0~100. 학생이 아니거나 미수강 시 null. " +
+            "학습 시청 50% (방문 차시 비율) + 퀴즈 응시율 30% + 과제 제출률 20% 가중. " +
+            "구성 요소가 없으면(예: 퀴즈 0개) 그 가중치를 제외하고 재정규화.",
+            example = "73", nullable = true)
+    private Integer progress;
+
     @Schema(description = "생성 시각", example = "2026-03-01T09:00:00")
     private LocalDateTime createdAt;
 
@@ -63,11 +69,16 @@ public class CourseResponse {
     }
 
     public static CourseResponse from(Course course, long studentCount, long lectureCount, boolean isEnrolled) {
-        return from(course, studentCount, lectureCount, isEnrolled, false);
+        return from(course, studentCount, lectureCount, isEnrolled, false, null);
     }
 
     public static CourseResponse from(Course course, long studentCount, long lectureCount,
                                       boolean isEnrolled, boolean includeInviteCode) {
+        return from(course, studentCount, lectureCount, isEnrolled, includeInviteCode, null);
+    }
+
+    public static CourseResponse from(Course course, long studentCount, long lectureCount,
+                                      boolean isEnrolled, boolean includeInviteCode, Integer progress) {
         return CourseResponse.builder()
                 .id(course.getId())
                 .title(course.getTitle())
@@ -82,6 +93,7 @@ public class CourseResponse {
                 .isEnrolled(isEnrolled)
                 .createdAt(course.getCreatedAt())
                 .inviteCode(includeInviteCode ? course.getInviteCode() : null)
+                .progress(progress)
                 .build();
     }
 }

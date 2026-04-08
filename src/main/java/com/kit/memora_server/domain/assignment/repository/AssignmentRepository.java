@@ -7,4 +7,5 @@ import java.util.List;
 
 public interface AssignmentRepository extends JpaRepository<Assignment, Long> {
     List<Assignment> findByCourseIdOrderByCreatedAtDesc(Long courseId);
+    long countByCourseId(Long courseId);
 }

@@ -1,11 +1,14 @@
 package com.kit.memora_server.domain.course.service;
 
+import com.kit.memora_server.domain.analysis.repository.LearningLogRepository;
 import com.kit.memora_server.domain.assignment.entity.Assignment;
 import com.kit.memora_server.domain.assignment.entity.Submission;
 import com.kit.memora_server.domain.assignment.repository.AiSubmissionFeedbackRepository;
 import com.kit.memora_server.domain.assignment.repository.AssignmentRepository;
 import com.kit.memora_server.domain.assignment.repository.SubmissionCommentRepository;
 import com.kit.memora_server.domain.assignment.repository.SubmissionRepository;
+import com.kit.memora_server.domain.quiz.repository.QuizAttemptRepository;
+import com.kit.memora_server.domain.quiz.repository.QuizRepository;
 import com.kit.memora_server.domain.course.dto.CourseMemberDto;
 import com.kit.memora_server.domain.course.dto.CourseRequest;
 import com.kit.memora_server.domain.course.dto.CourseResponse;
@@ -27,8 +30,6 @@ import com.kit.memora_server.domain.qa.entity.QaSession;
 import com.kit.memora_server.domain.qa.repository.QaMessageRepository;
 import com.kit.memora_server.domain.qa.repository.QaSessionRepository;
 import com.kit.memora_server.domain.quiz.entity.Quiz;
-import com.kit.memora_server.domain.quiz.repository.QuizAttemptRepository;
-import com.kit.memora_server.domain.quiz.repository.QuizRepository;
 import com.kit.memora_server.domain.user.entity.User;
 import com.kit.memora_server.domain.user.enums.UserRole;
 import com.kit.memora_server.domain.user.repository.UserRepository;
@@ -63,6 +64,7 @@ public class CourseService {
     private final SubmissionRepository submissionRepository;
     private final SubmissionCommentRepository submissionCommentRepository;
     private final AiSubmissionFeedbackRepository aiSubmissionFeedbackRepository;
+    private final LearningLogRepository learningLogRepository;
     private final TeamRepository teamRepository;
     private final TeamMemberRepository teamMemberRepository;
     private final TeamInvitationRepository teamInvitationRepository;
@@ -147,7 +149,8 @@ public class CourseService {
         long lectures = lectureRepository.countByCourseId(course.getId());
         boolean enrolled = enrollmentRepository.existsByUserIdAndCourseId(userId, course.getId());
         boolean isOwner = course.getInstructor().getId().equals(userId);
-        return CourseResponse.from(course, students, lectures, enrolled, isOwner);
+        Integer progress = enrolled && !isOwner ? calculateProgress(userId, course.getId(), lectures) : null;
+        return CourseResponse.from(course, students, lectures, enrolled, isOwner, progress);
     }
 
     public CourseResponse getById(Long courseId, Long userId) {
@@ -158,7 +161,50 @@ public class CourseService {
         long lectures = lectureRepository.countByCourseId(courseId);
         boolean enrolled = userId != null && enrollmentRepository.existsByUserIdAndCourseId(userId, courseId);
         boolean isOwner = userId != null && course.getInstructor().getId().equals(userId);
-        return CourseResponse.from(course, students, lectures, enrolled, isOwner);
+        Integer progress = (userId != null && enrolled && !isOwner) ? calculateProgress(userId, courseId, lectures) : null;
+        return CourseResponse.from(course, students, lectures, enrolled, isOwner, progress);
+    }
+
+    /**
+     * 학생의 강의 진도율 0~100.
+     *
+     * 가중치:
+     *   학습 시청 50% — distinct 방문 차시 / 전체 차시
+     *   퀴즈 응시율 30% — distinct 응시 문제 / 전체 문제
+     *   과제 제출률 20% — distinct 제출 과제 / 전체 과제
+     *
+     * 구성 요소가 0 (예: 강의에 퀴즈가 아직 없음) 이면 그 가중치는 분모에서 제외하고
+     * 나머지를 정규화한다. 모든 요소가 0 이면 0% 반환.
+     */
+    private Integer calculateProgress(Long userId, Long courseId, long totalLectures) {
+        long totalQuizzes = quizRepository.countByCourseId(courseId);
+        long totalAssignments = assignmentRepository.countByCourseId(courseId);
+
+        double weightSum = 0.0;
+        double accumulated = 0.0;
+
+        if (totalLectures > 0) {
+            long visited = learningLogRepository.countDistinctVisitedLecturesByUserIdAndCourseId(userId, courseId);
+            double ratio = Math.min(1.0, (double) visited / (double) totalLectures);
+            accumulated += ratio * 0.5;
+            weightSum += 0.5;
+        }
+        if (totalQuizzes > 0) {
+            long attempted = quizAttemptRepository.countDistinctAttemptedQuizzesByUserIdAndCourseId(userId, courseId);
+            double ratio = Math.min(1.0, (double) attempted / (double) totalQuizzes);
+            accumulated += ratio * 0.3;
+            weightSum += 0.3;
+        }
+        if (totalAssignments > 0) {
+            long submitted = submissionRepository.countDistinctSubmittedAssignmentsByUserIdAndCourseId(userId, courseId);
+            double ratio = Math.min(1.0, (double) submitted / (double) totalAssignments);
+            accumulated += ratio * 0.2;
+            weightSum += 0.2;
+        }
+
+        if (weightSum <= 0.0) return 0;
+        double normalized = accumulated / weightSum;
+        return (int) Math.round(normalized * 100.0);
     }
 
     @Transactional

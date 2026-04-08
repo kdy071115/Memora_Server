@@ -27,4 +27,8 @@ public interface QuizAttemptRepository extends JpaRepository<QuizAttempt, Long> 
 
     @Query("SELECT qa FROM QuizAttempt qa WHERE qa.user.id = :userId AND qa.quiz.lecture.course.id = :courseId")
     List<QuizAttempt> findByUserIdAndCourseId(@Param("userId") Long userId, @Param("courseId") Long courseId);
+
+    /** 학생이 한 번이라도 시도한 문제(quiz)의 개수 — 과제별 응시율 계산용. */
+    @Query("SELECT COUNT(DISTINCT qa.quiz.id) FROM QuizAttempt qa WHERE qa.user.id = :userId AND qa.quiz.lecture.course.id = :courseId")
+    long countDistinctAttemptedQuizzesByUserIdAndCourseId(@Param("userId") Long userId, @Param("courseId") Long courseId);
 }

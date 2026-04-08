@@ -32,4 +32,8 @@ public interface LearningLogRepository extends JpaRepository<LearningLog, Long> 
 
     @Query("SELECT COALESCE(MAX(l.createdAt), NULL) FROM LearningLog l WHERE l.user.id = :userId AND l.lecture.course.id = :courseId")
     LocalDateTime findMaxCreatedAtByUserIdAndCourseId(@Param("userId") Long userId, @Param("courseId") Long courseId);
+
+    /** 학생이 한 번이라도 학습 활동을 기록한 차시(lecture)의 개수 — 강의 진도율 계산용. */
+    @Query("SELECT COUNT(DISTINCT l.lecture.id) FROM LearningLog l WHERE l.user.id = :userId AND l.lecture.course.id = :courseId")
+    long countDistinctVisitedLecturesByUserIdAndCourseId(@Param("userId") Long userId, @Param("courseId") Long courseId);
 }
