@@ -35,6 +35,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.List;
 
@@ -67,11 +68,15 @@ public class SubmissionService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.ASSIGNMENT_NOT_FOUND));
 
         Course course = assignment.getCourse();
-        // 강사는 자기 강의 외 과제에 제출하지 않는다고 가정 — 하지만 막을 필요는 없음.
-        // 학생은 수강 등록 필수.
-        if (!course.getInstructor().getId().equals(userId)) {
+        boolean isInstructor = course.getInstructor().getId().equals(userId);
+        // 학생은 수강 등록 필수
+        if (!isInstructor) {
             if (!enrollmentRepository.existsByUserIdAndCourseId(userId, course.getId())) {
                 throw new BusinessException(ErrorCode.NOT_ENROLLED);
+            }
+            // 학생은 마감 이후 신규 제출 불가 (강사는 채점/예시 등록 등 가능)
+            if (isOverdue(assignment)) {
+                throw new BusinessException(ErrorCode.ASSIGNMENT_OVERDUE);
             }
         }
 
@@ -151,6 +156,11 @@ public class SubmissionService {
             throw new BusinessException(ErrorCode.FORBIDDEN);
         }
 
+        // 학생(=submitter)은 마감 이후 수정 불가
+        if (isOverdue(submission.getAssignment())) {
+            throw new BusinessException(ErrorCode.ASSIGNMENT_OVERDUE);
+        }
+
         Team team = resolveTeam(submission.getAssignment(), request.getTeamId(), userId);
         submission.update(request.getContent(), request.getVisibility(), team);
 
@@ -222,6 +232,12 @@ public class SubmissionService {
     }
 
     // ── Helpers ──
+
+    /** 마감일이 지났는지. dueDate 가 null 이면 마감 없음 (= false). */
+    private boolean isOverdue(Assignment assignment) {
+        LocalDateTime due = assignment.getDueDate();
+        return due != null && LocalDateTime.now().isAfter(due);
+    }
 
     private boolean canSee(Submission s, Long userId, boolean isInstructor, List<Long> myTeamIds) {
         if (isInstructor) return true;

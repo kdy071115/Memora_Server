@@ -41,6 +41,7 @@ public enum ErrorCode {
     NOT_TEAM_MEMBER(HttpStatus.FORBIDDEN, "NOT_TEAM_MEMBER", "해당 팀의 멤버가 아닙니다."),
     INVITATION_ALREADY_HANDLED(HttpStatus.CONFLICT, "INVITATION_ALREADY_HANDLED", "이미 처리된 초대장입니다."),
     SUBMISSION_FORBIDDEN(HttpStatus.FORBIDDEN, "SUBMISSION_FORBIDDEN", "제출물을 볼 권한이 없습니다."),
+    ASSIGNMENT_OVERDUE(HttpStatus.FORBIDDEN, "ASSIGNMENT_OVERDUE", "마감일이 지난 과제는 더 이상 제출하거나 수정할 수 없습니다."),
 
     // External
     AI_SERVER_ERROR(HttpStatus.SERVICE_UNAVAILABLE, "AI_SERVER_ERROR", "AI 서버 연결에 실패했습니다."),
