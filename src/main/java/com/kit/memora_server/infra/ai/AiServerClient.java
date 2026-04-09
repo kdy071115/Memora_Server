@@ -13,8 +13,17 @@ import com.kit.memora_server.infra.ai.dto.AiQuizGradeRequest;
 import com.kit.memora_server.infra.ai.dto.AiQuizGradeResponse;
 import com.kit.memora_server.infra.ai.dto.AiAssignmentFeedbackRequest;
 import com.kit.memora_server.infra.ai.dto.AiAssignmentFeedbackResponse;
+import com.kit.memora_server.infra.ai.dto.AiAudioTranscribeResponse;
+import com.kit.memora_server.infra.ai.dto.AiCareMessageRequest;
+import com.kit.memora_server.infra.ai.dto.AiCareMessageResponse;
+import com.kit.memora_server.infra.ai.dto.AiDailyMissionRequest;
+import com.kit.memora_server.infra.ai.dto.AiDailyMissionResponse;
 import com.kit.memora_server.infra.ai.dto.AiSelfExplainRequest;
 import com.kit.memora_server.infra.ai.dto.AiSelfExplainResponse;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.http.MediaType;
+import org.springframework.http.client.MultipartBodyBuilder;
+import org.springframework.web.reactive.function.BodyInserters;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -119,6 +128,58 @@ public class AiServerClient {
             throw new BusinessException(ErrorCode.AI_SERVER_ERROR);
         } catch (Exception e) {
             log.error("AI 서버 과제 피드백 실패: {}", e.getMessage());
+            throw new BusinessException(ErrorCode.AI_SERVER_ERROR);
+        }
+    }
+
+    public AiCareMessageResponse generateCareMessage(AiCareMessageRequest request) {
+        try {
+            return aiWebClient.post()
+                    .uri("/ai/care-message")
+                    .bodyValue(request)
+                    .retrieve()
+                    .bodyToMono(AiCareMessageResponse.class)
+                    .block();
+        } catch (Exception e) {
+            log.error("AI 케어 메시지 호출 실패: {}", e.getMessage());
+            throw new BusinessException(ErrorCode.AI_SERVER_ERROR);
+        }
+    }
+
+    public AiDailyMissionResponse generateDailyMissions(AiDailyMissionRequest request) {
+        try {
+            return aiWebClient.post()
+                    .uri("/ai/daily-missions")
+                    .bodyValue(request)
+                    .retrieve()
+                    .bodyToMono(AiDailyMissionResponse.class)
+                    .block();
+        } catch (Exception e) {
+            log.error("AI 데일리 미션 호출 실패: {}", e.getMessage());
+            throw new BusinessException(ErrorCode.AI_SERVER_ERROR);
+        }
+    }
+
+    public AiAudioTranscribeResponse transcribeAudio(byte[] fileBytes, String fileName, String languageHint) {
+        try {
+            MultipartBodyBuilder builder = new MultipartBodyBuilder();
+            builder.part("file", new ByteArrayResource(fileBytes) {
+                @Override
+                public String getFilename() {
+                    return fileName != null ? fileName : "audio.bin";
+                }
+            }).header("Content-Disposition", "form-data; name=\"file\"; filename=\"" + (fileName != null ? fileName : "audio.bin") + "\"");
+            builder.part("languageHint", languageHint != null ? languageHint : "ko");
+
+            return aiWebClient.post()
+                    .uri("/ai/audio-note/transcribe")
+                    .contentType(MediaType.MULTIPART_FORM_DATA)
+                    .body(BodyInserters.fromMultipartData(builder.build()))
+                    .retrieve()
+                    .bodyToMono(AiAudioTranscribeResponse.class)
+                    .block();
+        } catch (Exception e) {
+            log.error("AI 음성 트랜스크립션 실패: {}", e.getMessage());
             throw new BusinessException(ErrorCode.AI_SERVER_ERROR);
         }
     }
