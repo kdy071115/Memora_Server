@@ -4,6 +4,7 @@ import com.kit.memora_server.domain.analysis.repository.LearningLogRepository;
 import com.kit.memora_server.domain.assignment.entity.Assignment;
 import com.kit.memora_server.domain.assignment.entity.Submission;
 import com.kit.memora_server.domain.assignment.repository.AiSubmissionFeedbackRepository;
+import com.kit.memora_server.domain.audionote.repository.AudioNoteRepository;
 import com.kit.memora_server.domain.assignment.repository.AssignmentRepository;
 import com.kit.memora_server.domain.assignment.repository.SubmissionCommentRepository;
 import com.kit.memora_server.domain.assignment.repository.SubmissionRepository;
@@ -64,6 +65,7 @@ public class CourseService {
     private final SubmissionRepository submissionRepository;
     private final SubmissionCommentRepository submissionCommentRepository;
     private final AiSubmissionFeedbackRepository aiSubmissionFeedbackRepository;
+    private final AudioNoteRepository audioNoteRepository;
     private final LearningLogRepository learningLogRepository;
     private final TeamRepository teamRepository;
     private final TeamMemberRepository teamMemberRepository;
@@ -242,6 +244,9 @@ public class CourseService {
                 documentChunkRepository.deleteByDocumentId(document.getId());
             }
             documentRepository.deleteAll(documents);
+
+            // 1-4. AudioNote
+            audioNoteRepository.deleteByLectureId(lectureId);
         }
 
         // 2. 차시 자체

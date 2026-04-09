@@ -1,5 +1,6 @@
 package com.kit.memora_server.domain.lecture.service;
 
+import com.kit.memora_server.domain.audionote.repository.AudioNoteRepository;
 import com.kit.memora_server.domain.course.entity.Course;
 import com.kit.memora_server.domain.course.repository.CourseRepository;
 import com.kit.memora_server.domain.document.entity.Document;
@@ -26,6 +27,7 @@ public class LectureService {
     private final CourseRepository courseRepository;
     private final DocumentRepository documentRepository;
     private final DocumentChunkRepository documentChunkRepository;
+    private final AudioNoteRepository audioNoteRepository;
 
     @Transactional
     public LectureResponse create(Long courseId, Long instructorId, LectureRequest request) {
@@ -58,7 +60,9 @@ public class LectureService {
             throw new BusinessException(ErrorCode.FORBIDDEN);
         }
 
-        // 차시에 속한 자료(문서)와 청크를 모두 정리한 뒤 차시를 삭제합니다.
+        // 차시에 속한 자료(문서)와 청크 + 음성 노트를 모두 정리한 뒤 차시를 삭제합니다.
+        audioNoteRepository.deleteByLectureId(lectureId);
+
         List<Document> documents = documentRepository.findByLectureId(lectureId);
         for (Document doc : documents) {
             documentChunkRepository.deleteByDocumentId(doc.getId());
