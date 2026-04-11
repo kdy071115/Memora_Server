@@ -18,6 +18,9 @@ public class AiQaRequest {
     private Long lectureId;
     private String question;
     private String difficulty;
+    /** "NORMAL" (기본) 또는 "SOCRATIC" (역질문 모드) */
+    @Builder.Default
+    private String mode = "NORMAL";
     private List<HistoryMessage> history;
 
     @Getter

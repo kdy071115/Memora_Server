@@ -126,6 +126,7 @@ public class QaService {
                 .lectureId(session.getLecture().getId())
                 .question(request.getContent())
                 .difficulty(request.getDifficulty() != null ? request.getDifficulty() : "MEDIUM")
+                .mode(request.getMode() != null ? request.getMode() : "NORMAL")
                 .history(history)
                 .build();
         AiQaResponse aiResponse = aiServerClient.askQuestion(aiRequest);

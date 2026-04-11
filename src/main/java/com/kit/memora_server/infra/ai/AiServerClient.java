@@ -16,6 +16,8 @@ import com.kit.memora_server.infra.ai.dto.AiAssignmentFeedbackResponse;
 import com.kit.memora_server.infra.ai.dto.AiAudioTranscribeResponse;
 import com.kit.memora_server.infra.ai.dto.AiCareMessageRequest;
 import com.kit.memora_server.infra.ai.dto.AiCareMessageResponse;
+import com.kit.memora_server.infra.ai.dto.AiConceptGraphRequest;
+import com.kit.memora_server.infra.ai.dto.AiConceptGraphResponse;
 import com.kit.memora_server.infra.ai.dto.AiDailyMissionRequest;
 import com.kit.memora_server.infra.ai.dto.AiDailyMissionResponse;
 import com.kit.memora_server.infra.ai.dto.AiSelfExplainRequest;
@@ -180,6 +182,20 @@ public class AiServerClient {
                     .block();
         } catch (Exception e) {
             log.error("AI 음성 트랜스크립션 실패: {}", e.getMessage());
+            throw new BusinessException(ErrorCode.AI_SERVER_ERROR);
+        }
+    }
+
+    public AiConceptGraphResponse generateConceptGraph(AiConceptGraphRequest request) {
+        try {
+            return aiWebClient.post()
+                    .uri("/ai/concept-graph")
+                    .bodyValue(request)
+                    .retrieve()
+                    .bodyToMono(AiConceptGraphResponse.class)
+                    .block();
+        } catch (Exception e) {
+            log.error("AI 개념 그래프 호출 실패: {}", e.getMessage());
             throw new BusinessException(ErrorCode.AI_SERVER_ERROR);
         }
     }

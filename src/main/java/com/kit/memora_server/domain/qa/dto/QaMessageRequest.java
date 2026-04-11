@@ -14,4 +14,7 @@ public class QaMessageRequest {
     private String content;
 
     private String difficulty = "MEDIUM";
+
+    /** "NORMAL" (기본) 또는 "SOCRATIC" (소크라테스 역질문 모드) */
+    private String mode = "NORMAL";
 }
