@@ -1,0 +1,64 @@
+spring:
+  application:
+    name: Memora-Server
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/memora}
+    username: ${DB_USERNAME:memora}
+    password: ${DB_PASSWORD:memora}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+    open-in-view: false
+
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
+
+jwt:
+  secret: ${JWT_SECRET:memora-default-secret-key-for-development-only-change-in-production}
+  access-expiration: 10800000   # 3시간
+  refresh-expiration: 604800000 # 7일
+
+ai:
+  server:
+    url: ${AI_SERVER_URL:http://localhost:8000}
+
+cors:
+  allowed-origin-patterns: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}
+
+storage:
+  # AWS 자격증명이 비어 있을 때 파일을 저장할 로컬 경로
+  local-path: ${STORAGE_LOCAL_PATH:./uploads}
+
+cloud:
+  aws:
+    s3:
+      bucket: ${AWS_S3_BUCKET:memora-uploads}
+    region:
+      static: ${AWS_REGION:ap-northeast-2}
+    credentials:
+      access-key: ${AWS_ACCESS_KEY:}
+      secret-key: ${AWS_SECRET_KEY:}
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+    display-request-duration: true
+    doc-expansion: none
+    persist-authorization: true
+  api-docs:
+    path: /v3/api-docs
+  default-produces-media-type: application/json
+  default-consumes-media-type: application/json
+  paths-to-match: /api/**
+  packages-to-scan: com.kit.memora_server.domain

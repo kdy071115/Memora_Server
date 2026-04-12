@@ -1,0 +1,32 @@
+# ===========================================
+# Production profile
+# 사용:  --spring.profiles.active=prod
+# ===========================================
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate     # 운영에서는 스키마 변경 금지 (마이그레이션 도구로 관리)
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+
+logging:
+  level:
+    root: WARN
+    com.kit.memora_server: INFO
+    org.hibernate.SQL: WARN
+    org.springframework.web: WARN
+
+server:
+  error:
+    include-message: never
+    include-stacktrace: never
+    include-binding-errors: never
+
+# Swagger 도 운영에서는 끄거나 별도 인증 뒤로 숨기는 것을 권장
+springdoc:
+  swagger-ui:
+    enabled: ${SWAGGER_ENABLED:false}
+  api-docs:
+    enabled: ${SWAGGER_ENABLED:false}
