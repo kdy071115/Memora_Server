@@ -104,4 +104,19 @@ public class AuthService {
                 .role(user.getRole().name())
                 .build();
     }
+
+    @Transactional
+    public TokenResponse.UserInfo updateMe(Long userId, String name) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.USER_NOT_FOUND));
+        if (name != null && !name.isBlank()) {
+            user.updateName(name.trim());
+        }
+        return TokenResponse.UserInfo.builder()
+                .id(user.getId())
+                .email(user.getEmail())
+                .name(user.getName())
+                .role(user.getRole().name())
+                .build();
+    }
 }
