@@ -48,4 +48,13 @@ public class AuthController {
         TokenResponse.UserInfo me = authService.getMe(user.getId());
         return ResponseEntity.ok(ApiResponse.ok(me));
     }
+
+    @Operation(summary = "내 정보 수정 (이름)")
+    @PutMapping("/me")
+    public ResponseEntity<ApiResponse<TokenResponse.UserInfo>> updateMe(
+            @AuthenticationPrincipal CustomUserDetails user,
+            @RequestBody java.util.Map<String, String> body) {
+        TokenResponse.UserInfo updated = authService.updateMe(user.getId(), body.get("name"));
+        return ResponseEntity.ok(ApiResponse.ok("프로필이 수정되었습니다.", updated));
+    }
 }
